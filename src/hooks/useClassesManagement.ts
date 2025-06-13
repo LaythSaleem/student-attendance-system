@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
-const API_BASE = 'https://scholar-track-pulse.onrender.com/api';
+const API_BASE = 'https://student-attendance-system-4d0g.onrender.com/api';
 
 // Types
 export interface Topic {

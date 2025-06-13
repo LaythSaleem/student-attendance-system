@@ -82,7 +82,7 @@ interface Student {
   attendance_notes?: string;
 }
 
-const API_BASE = 'https://scholar-track-pulse.onrender.com/api';
+const API_BASE = 'https://student-attendance-system-4d0g.onrender.com/api';
 
 export function ExamsPage() {
   const [exams, setExams] = useState<Exam[]>([]);

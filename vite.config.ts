@@ -14,7 +14,7 @@ export default defineConfig({
     port: 8082,
     proxy: {
       '/api': {
-        target: 'https://scholar-track-pulse.onrender.com',
+        target: 'https://student-attendance-system-4d0g.onrender.com',
         changeOrigin: true,
         secure: false,
       },

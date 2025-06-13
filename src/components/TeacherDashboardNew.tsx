@@ -23,7 +23,7 @@ import {
   Download
 } from 'lucide-react';
 
-const API_BASE = 'https://scholar-track-pulse.onrender.com/api';
+const API_BASE = 'https://student-attendance-system-4d0g.onrender.com/api';
 
 interface User {
   id: string;
