@@ -8,7 +8,7 @@
     "dev:server": "node server.cjs",
     "dev:full": "concurrently \"npm run dev:server\" \"npm run dev\"",
     "build": "tsc -b && vite build",
-    "start": "node render-server.js",
+    "start": "node render-server.cjs",
     "render-build": "chmod +x render-build.sh && ./render-build.sh",
     "lint": "eslint .",
     "preview": "vite preview",
