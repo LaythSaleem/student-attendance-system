@@ -32,6 +32,13 @@ try {
   // Test database connection
   const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get();
   console.log(`👥 Users in database: ${userCount.count}`);
+  
+  // Debug: Check if users have passwords
+  const sampleUsers = db.prepare('SELECT email, password FROM users LIMIT 3').all();
+  console.log('📝 Sample user data:');
+  sampleUsers.forEach(user => {
+    console.log(`  - ${user.email}: ${user.password ? 'Has password' : 'No password'}`);
+  });
 } catch (error) {
   console.error('❌ Database connection failed:', error);
   process.exit(1);
@@ -142,6 +149,11 @@ app.post('/api/auth/login', async (req, res) => {
     const { email, password } = req.body;
     console.log(`🔐 Login attempt for: ${email}`);
 
+    // Validate input
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required' });
+    }
+
     const user = db.prepare(`
       SELECT u.*, ur.role 
       FROM users u 
@@ -151,6 +163,12 @@ app.post('/api/auth/login', async (req, res) => {
 
     if (!user) {
       console.log('❌ User not found');
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    // Check if user has a password
+    if (!user.password) {
+      console.log('❌ User has no password set');
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
