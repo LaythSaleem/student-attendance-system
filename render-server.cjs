@@ -51,6 +51,97 @@ function initializeDatabase() {
       )
     `);
 
+    // Admin profiles table
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS admin_profiles (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        first_name TEXT,
+        last_name TEXT,
+        phone TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE(user_id)
+      )
+    `);
+
+    // Teachers table
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS teachers (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        first_name TEXT NOT NULL,
+        last_name TEXT NOT NULL,
+        subject TEXT,
+        phone TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE(user_id)
+      )
+    `);
+
+    // Students table
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS students (
+        id TEXT PRIMARY KEY,
+        user_id TEXT,
+        student_id TEXT UNIQUE NOT NULL,
+        first_name TEXT NOT NULL,
+        last_name TEXT NOT NULL,
+        date_of_birth DATE,
+        phone TEXT,
+        address TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+      )
+    `);
+
+    // Classes table
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS classes (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        teacher_id TEXT,
+        academic_year TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (teacher_id) REFERENCES teachers(id) ON DELETE SET NULL
+      )
+    `);
+
+    // Exams table
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS exams (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        description TEXT,
+        class_id TEXT,
+        teacher_id TEXT,
+        exam_date DATE NOT NULL,
+        exam_time TIME,
+        duration_minutes INTEGER,
+        total_marks INTEGER DEFAULT 100,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+        FOREIGN KEY (teacher_id) REFERENCES teachers(id) ON DELETE SET NULL
+      )
+    `);
+
+    // Attendance table
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS attendance (
+        id TEXT PRIMARY KEY,
+        student_id TEXT NOT NULL,
+        class_id TEXT NOT NULL,
+        date DATE NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('present', 'absent', 'late', 'not_marked')),
+        notes TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+        FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+        UNIQUE(student_id, class_id, date)
+      )
+    `);
+
     // Create default admin user if not exists
     const adminExists = db.prepare('SELECT COUNT(*) as count FROM users WHERE email = ?').get('admin@school.com');
     if (adminExists.count === 0) {
@@ -67,6 +158,12 @@ function initializeDatabase() {
       db.prepare(`
         INSERT INTO user_roles (id, user_id, role) 
         VALUES (?, ?, 'admin')
+      `).run(require('uuid').v4(), adminId);
+      
+      // Create admin profile
+      db.prepare(`
+        INSERT INTO admin_profiles (id, user_id, first_name, last_name) 
+        VALUES (?, ?, 'System', 'Administrator')
       `).run(require('uuid').v4(), adminId);
       
       console.log('✅ Default admin user created');
@@ -88,6 +185,12 @@ function initializeDatabase() {
       db.prepare(`
         INSERT INTO user_roles (id, user_id, role) 
         VALUES (?, ?, 'teacher')
+      `).run(require('uuid').v4(), teacherId);
+      
+      // Create teacher profile
+      db.prepare(`
+        INSERT INTO teachers (id, user_id, first_name, last_name, subject) 
+        VALUES (?, ?, 'Default', 'Teacher', 'General Studies')
       `).run(require('uuid').v4(), teacherId);
       
       console.log('✅ Default teacher user created');
@@ -475,6 +578,191 @@ app.get('/api/reports/daily-attendance', authenticateToken, (req, res) => {
     res.json({ summary, data });
   } catch (error) {
     console.error('Error generating daily attendance report:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Teachers dropdown endpoint
+app.get('/api/teachers/dropdown', authenticateToken, (req, res) => {
+  try {
+    const teachers = db.prepare(`
+      SELECT t.id, t.first_name, t.last_name, t.subject, u.email
+      FROM teachers t
+      JOIN users u ON t.user_id = u.id
+      ORDER BY t.first_name, t.last_name
+    `).all();
+    
+    res.json(teachers.map(t => ({
+      id: t.id,
+      name: `${t.first_name} ${t.last_name}`,
+      subject: t.subject,
+      email: t.email
+    })));
+  } catch (error) {
+    console.error('Error fetching teachers dropdown:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Academic years dropdown endpoint
+app.get('/api/academic-years/dropdown', authenticateToken, (req, res) => {
+  try {
+    const academicYears = db.prepare(`
+      SELECT DISTINCT academic_year 
+      FROM classes 
+      WHERE academic_year IS NOT NULL 
+      ORDER BY academic_year DESC
+    `).all();
+    
+    res.json(academicYears.map(ay => ({
+      id: ay.academic_year,
+      name: ay.academic_year
+    })));
+  } catch (error) {
+    console.error('Error fetching academic years dropdown:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Available topics endpoint
+app.get('/api/teachers/available-topics', authenticateToken, (req, res) => {
+  try {
+    // Return some sample topics/subjects
+    const topics = [
+      { id: 1, name: 'Mathematics', stage: 'Primary' },
+      { id: 2, name: 'English', stage: 'Primary' },
+      { id: 3, name: 'Science', stage: 'Primary' },
+      { id: 4, name: 'History', stage: 'Secondary' },
+      { id: 5, name: 'Physics', stage: 'Secondary' },
+      { id: 6, name: 'Chemistry', stage: 'Secondary' },
+      { id: 7, name: 'Biology', stage: 'Secondary' },
+      { id: 8, name: 'Geography', stage: 'Secondary' },
+      { id: 9, name: 'Art', stage: 'All' },
+      { id: 10, name: 'Physical Education', stage: 'All' }
+    ];
+    
+    res.json(topics);
+  } catch (error) {
+    console.error('Error fetching available topics:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Exams endpoint
+app.get('/api/exams', authenticateToken, (req, res) => {
+  try {
+    const exams = db.prepare(`
+      SELECT e.*, c.name as class_name, t.first_name, t.last_name
+      FROM exams e
+      LEFT JOIN classes c ON e.class_id = c.id
+      LEFT JOIN teachers t ON e.teacher_id = t.id
+      ORDER BY e.exam_date DESC
+    `).all();
+    
+    res.json(exams.map(exam => ({
+      ...exam,
+      teacher_name: exam.first_name && exam.last_name ? `${exam.first_name} ${exam.last_name}` : null
+    })));
+  } catch (error) {
+    console.error('Error fetching exams:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Exam types endpoint
+app.get('/api/exam-types', authenticateToken, (req, res) => {
+  try {
+    const examTypes = [
+      { id: 1, name: 'Midterm Exam', description: 'Mid-semester examination' },
+      { id: 2, name: 'Final Exam', description: 'End of semester examination' },
+      { id: 3, name: 'Quiz', description: 'Short assessment' },
+      { id: 4, name: 'Assignment', description: 'Take-home assignment' },
+      { id: 5, name: 'Project', description: 'Long-term project evaluation' },
+      { id: 6, name: 'Practical', description: 'Hands-on practical examination' }
+    ];
+    
+    res.json(examTypes);
+  } catch (error) {
+    console.error('Error fetching exam types:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Detailed attendance reports endpoint
+app.get('/api/reports/attendance-detailed', authenticateToken, (req, res) => {
+  try {
+    const { class_id, date_from, date_to } = req.query;
+    
+    let query = `
+      SELECT 
+        a.*,
+        s.first_name,
+        s.last_name,
+        s.student_id,
+        c.name as class_name
+      FROM attendance a
+      JOIN students s ON a.student_id = s.id
+      JOIN classes c ON a.class_id = c.id
+      WHERE 1=1
+    `;
+    
+    const params = [];
+    
+    if (class_id) {
+      query += ` AND a.class_id = ?`;
+      params.push(class_id);
+    }
+    
+    if (date_from) {
+      query += ` AND a.date >= ?`;
+      params.push(date_from);
+    }
+    
+    if (date_to) {
+      query += ` AND a.date <= ?`;
+      params.push(date_to);
+    }
+    
+    query += ` ORDER BY a.date DESC, s.first_name, s.last_name`;
+    
+    const records = db.prepare(query).all(...params);
+    
+    res.json(records.map(record => ({
+      ...record,
+      student_name: `${record.first_name} ${record.last_name}`
+    })));
+  } catch (error) {
+    console.error('Error fetching detailed attendance reports:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Users endpoint (for admin user management)
+app.get('/api/users', authenticateToken, requireRole('admin'), (req, res) => {
+  try {
+    const users = db.prepare(`
+      SELECT 
+        u.id,
+        u.email,
+        u.created_at,
+        ur.role,
+        CASE 
+          WHEN ur.role = 'student' THEN s.first_name || ' ' || s.last_name
+          WHEN ur.role = 'teacher' THEN t.first_name || ' ' || t.last_name
+          WHEN ur.role = 'admin' THEN ap.first_name || ' ' || ap.last_name
+          ELSE 'Unknown'
+        END as full_name
+      FROM users u
+      LEFT JOIN user_roles ur ON u.id = ur.user_id
+      LEFT JOIN students s ON u.id = s.user_id
+      LEFT JOIN teachers t ON u.id = t.user_id
+      LEFT JOIN admin_profiles ap ON u.id = ap.user_id
+      ORDER BY u.created_at DESC
+    `).all();
+    
+    res.json(users);
+  } catch (error) {
+    console.error('Error fetching users:', error);
     res.status(500).json({ error: error.message });
   }
 });
