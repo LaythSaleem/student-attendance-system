@@ -23,21 +23,101 @@ const dbPath = process.env.NODE_ENV === 'production'
 
 console.log(`📊 Database path: ${dbPath}`);
 
+// Database initialization function
+function initializeDatabase() {
+  console.log('🔧 Initializing database schema...');
+  
+  try {
+    // Users table
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        email TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // User roles table
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS user_roles (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        role TEXT NOT NULL CHECK (role IN ('admin', 'teacher', 'student')),
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE(user_id)
+      )
+    `);
+
+    // Create default admin user if not exists
+    const adminExists = db.prepare('SELECT COUNT(*) as count FROM users WHERE email = ?').get('admin@school.com');
+    if (adminExists.count === 0) {
+      console.log('👤 Creating default admin user...');
+      
+      const adminId = require('uuid').v4();
+      const hashedPassword = require('bcryptjs').hashSync('admin123', 10);
+      
+      db.prepare(`
+        INSERT INTO users (id, email, password_hash) 
+        VALUES (?, ?, ?)
+      `).run(adminId, 'admin@school.com', hashedPassword);
+      
+      db.prepare(`
+        INSERT INTO user_roles (id, user_id, role) 
+        VALUES (?, ?, 'admin')
+      `).run(require('uuid').v4(), adminId);
+      
+      console.log('✅ Default admin user created');
+    }
+
+    // Create default teacher user if not exists
+    const teacherExists = db.prepare('SELECT COUNT(*) as count FROM users WHERE email = ?').get('teacher@school.com');
+    if (teacherExists.count === 0) {
+      console.log('👨‍🏫 Creating default teacher user...');
+      
+      const teacherId = require('uuid').v4();
+      const hashedPassword = require('bcryptjs').hashSync('teacher123', 10);
+      
+      db.prepare(`
+        INSERT INTO users (id, email, password_hash) 
+        VALUES (?, ?, ?)
+      `).run(teacherId, 'teacher@school.com', hashedPassword);
+      
+      db.prepare(`
+        INSERT INTO user_roles (id, user_id, role) 
+        VALUES (?, ?, 'teacher')
+      `).run(require('uuid').v4(), teacherId);
+      
+      console.log('✅ Default teacher user created');
+    }
+
+    console.log('✅ Database schema initialized');
+  } catch (error) {
+    console.error('❌ Database initialization failed:', error);
+  }
+}
+
 let db;
 try {
   db = new Database(dbPath);
   db.pragma('journal_mode = WAL');
+  db.pragma('foreign_keys = ON');
   console.log('✅ Database connected successfully');
+  
+  // Initialize database schema if needed
+  initializeDatabase();
   
   // Test database connection
   const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get();
   console.log(`👥 Users in database: ${userCount.count}`);
   
   // Debug: Check if users have passwords
-  const sampleUsers = db.prepare('SELECT email, password FROM users LIMIT 3').all();
+  const sampleUsers = db.prepare('SELECT email, password_hash FROM users LIMIT 3').all();
   console.log('📝 Sample user data:');
   sampleUsers.forEach(user => {
-    console.log(`  - ${user.email}: ${user.password ? 'Has password' : 'No password'}`);
+    console.log(`  - ${user.email}: ${user.password_hash ? 'Has password' : 'No password'}`);
   });
 } catch (error) {
   console.error('❌ Database connection failed:', error);
@@ -167,12 +247,12 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     // Check if user has a password
-    if (!user.password) {
+    if (!user.password_hash) {
       console.log('❌ User has no password set');
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    const validPassword = await bcrypt.compare(password, user.password);
+    const validPassword = await bcrypt.compare(password, user.password_hash);
     if (!validPassword) {
       console.log('❌ Invalid password');
       return res.status(401).json({ error: 'Invalid credentials' });
