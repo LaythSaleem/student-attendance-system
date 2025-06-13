@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings Debug Tool</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 20px auto; padding: 20px; }
+        .section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { background-color: #e8f5e9; border-color: #4caf50; }
+        .error { background-color: #ffebee; border-color: #f44336; }
+        .info { background-color: #e3f2fd; border-color: #2196f3; }
+        button { padding: 10px 20px; margin: 5px; background: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        pre { background: #f5f5f5; padding: 10px; border-radius: 3px; overflow-x: auto; font-size: 12px; }
+        .log { max-height: 300px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; background: #fafafa; }
+    </style>
+</head>
+<body>
+    <h1>🔧 System Settings Debug Tool</h1>
+    
+    <div class="section info">
+        <h3>Current Issue Analysis</h3>
+        <p>This tool will help diagnose why the System Settings page shows "Access Denied" while other dashboard pages work fine.</p>
+    </div>
+
+    <div class="section">
+        <h3>Step 1: Check Authentication Status</h3>
+        <button onclick="checkAuth()">Check Current Auth Status</button>
+        <div id="authResult"></div>
+    </div>
+
+    <div class="section">
+        <h3>Step 2: Test Settings API Directly</h3>
+        <button onclick="testSettingsAPI()">Test Settings API</button>
+        <div id="apiResult"></div>
+    </div>
+
+    <div class="section">
+        <h3>Step 3: Compare with Other APIs</h3>
+        <button onclick="testOtherAPIs()">Test Other Dashboard APIs</button>
+        <div id="otherResult"></div>
+    </div>
+
+    <div class="section">
+        <h3>Step 4: Fix Authentication</h3>
+        <button onclick="refreshAuth()">Refresh Authentication</button>
+        <button onclick="clearAndRelogin()">Clear Storage & Re-login</button>
+        <div id="fixResult"></div>
+    </div>
+
+    <div class="section">
+        <h3>Debug Log</h3>
+        <button onclick="clearLog()">Clear Log</button>
+        <div id="debugLog" class="log"></div>
+    </div>
+
+    <script>
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logDiv = document.getElementById('debugLog');
+            const entry = document.createElement('div');
+            entry.style.marginBottom = '5px';
+            entry.innerHTML = `<span style="color: #666;">[${timestamp}]</span> ${message}`;
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+            console.log(message);
+        }
+
+        function showResult(elementId, message, type = 'info') {
+            const element = document.getElementById(elementId);
+            element.innerHTML = `<div class="section ${type}">${message}</div>`;
+        }
+
+        async function checkAuth() {
+            log('🔍 Checking authentication status...');
+            
+            const token = localStorage.getItem('auth_token'); // Fixed: Use correct token key
+            if (!token) {
+                showResult('authResult', '❌ No authentication token found. You need to login first.', 'error');
+                log('❌ No token in localStorage');
+                return;
+            }
+
+            try {
+                const payload = JSON.parse(atob(token.split('.')[1]));
+                const expiry = new Date(payload.exp * 1000);
+                const now = new Date();
+                const isExpired = expiry <= now;
+                const isAdmin = payload.role === 'admin';
+
+                const authInfo = `
+                    <strong>Token Analysis:</strong><br>
+                    • User: ${payload.email}<br>
+                    • Role: ${payload.role} ${isAdmin ? '✅' : '❌'}<br>
+                    • Expires: ${expiry.toLocaleString()}<br>
+                    • Status: ${isExpired ? '❌ EXPIRED' : '✅ Valid'}<br>
+                    • Token Length: ${token.length} chars
+                `;
+
+                if (isExpired) {
+                    showResult('authResult', authInfo + '<br><br>🔧 <strong>Fix:</strong> Token has expired. Click "Refresh Authentication" below.', 'error');
+                    log('❌ Token expired');
+                } else if (!isAdmin) {
+                    showResult('authResult', authInfo + '<br><br>🔧 <strong>Fix:</strong> You need admin privileges. Login as admin@school.com', 'error');
+                    log('❌ Not admin role');
+                } else {
+                    showResult('authResult', authInfo + '<br><br>✅ Authentication looks good!', 'success');
+                    log('✅ Token is valid and user is admin');
+                }
+            } catch (e) {
+                showResult('authResult', '❌ Invalid token format. Clear storage and re-login.', 'error');
+                log('❌ Token parsing error: ' + e.message);
+            }
+        }
+
+        async function testSettingsAPI() {
+            log('🌐 Testing settings API...');
+            const token = localStorage.getItem('auth_token'); // Fixed: Use correct token key
+
+            if (!token) {
+                showResult('apiResult', '❌ No token available. Please check authentication first.', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/settings', {
+                    headers: { 
+                        Authorization: `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                log(`📡 Settings API response: ${response.status} ${response.statusText}`);
+
+                if (response.ok) {
+                    const settings = await response.json();
+                    const categories = Object.keys(settings);
+                    showResult('apiResult', `
+                        ✅ <strong>Settings API Working!</strong><br>
+                        • Status: ${response.status} OK<br>
+                        • Categories: ${categories.join(', ')}<br>
+                        • Total Settings: ${Object.values(settings).reduce((acc, cat) => acc + Object.keys(cat).length, 0)}<br>
+                        <br>🎉 <strong>System Settings should work now!</strong>
+                    `, 'success');
+                    log('✅ Settings API working correctly');
+                } else {
+                    const errorText = await response.text();
+                    showResult('apiResult', `
+                        ❌ <strong>Settings API Failed</strong><br>
+                        • Status: ${response.status} ${response.statusText}<br>
+                        • Error: ${errorText}<br>
+                        <br>🔧 <strong>Fix:</strong> ${response.status === 401 || response.status === 403 ? 'Authentication issue - refresh your login' : 'Server error - contact support'}
+                    `, 'error');
+                    log(`❌ Settings API failed: ${response.status} - ${errorText}`);
+                }
+            } catch (error) {
+                showResult('apiResult', `❌ Network error: ${error.message}`, 'error');
+                log(`❌ Network error: ${error.message}`);
+            }
+        }
+
+        async function testOtherAPIs() {
+            log('🔄 Testing other dashboard APIs for comparison...');
+            const token = localStorage.getItem('token');
+
+            if (!token) {
+                showResult('otherResult', '❌ No token available.', 'error');
+                return;
+            }
+
+            const tests = [
+                { name: 'User Profile', url: '/api/user/profile' },
+                { name: 'Students', url: '/api/students' },
+                { name: 'Teachers', url: '/api/teachers' }
+            ];
+
+            let results = '<strong>API Comparison:</strong><br>';
+            
+            for (const test of tests) {
+                try {
+                    const response = await fetch(test.url, {
+                        headers: { Authorization: `Bearer ${token}` }
+                    });
+                    
+                    const status = response.ok ? '✅' : '❌';
+                    results += `• ${test.name}: ${status} ${response.status}<br>`;
+                    log(`${status} ${test.name}: ${response.status}`);
+                } catch (error) {
+                    results += `• ${test.name}: ❌ Error<br>`;
+                    log(`❌ ${test.name}: ${error.message}`);
+                }
+            }
+
+            showResult('otherResult', results, 'info');
+        }
+
+        async function refreshAuth() {
+            log('🔄 Refreshing authentication...');
+            
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: 'admin@school.com',
+                        password: 'admin123'
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    localStorage.setItem('auth_token', data.token); // Fixed: Use correct token key
+                    showResult('fixResult', `
+                        ✅ <strong>Authentication Refreshed!</strong><br>
+                        • New token generated<br>
+                        • User: ${data.user.email}<br>
+                        • Role: ${data.user.role}<br>
+                        <br>🚀 Try accessing System Settings now!
+                    `, 'success');
+                    log('✅ Authentication refreshed successfully');
+                } else {
+                    const error = await response.text();
+                    showResult('fixResult', `❌ Login failed: ${error}`, 'error');
+                    log(`❌ Login failed: ${error}`);
+                }
+            } catch (error) {
+                showResult('fixResult', `❌ Network error: ${error.message}`, 'error');
+                log(`❌ Login error: ${error.message}`);
+            }
+        }
+
+        function clearAndRelogin() {
+            log('🗑️ Clearing storage and reloading...');
+            localStorage.clear();
+            sessionStorage.clear();
+            showResult('fixResult', '🔄 Storage cleared. Reloading page...', 'info');
+            setTimeout(() => {
+                window.location.href = '/';
+            }, 2000);
+        }
+
+        function clearLog() {
+            document.getElementById('debugLog').innerHTML = '';
+        }
+
+        // Auto-check auth on load
+        window.onload = function() {
+            log('🚀 Settings Debug Tool loaded');
+            checkAuth();
+        };
+    </script>
+</body>
+</html>

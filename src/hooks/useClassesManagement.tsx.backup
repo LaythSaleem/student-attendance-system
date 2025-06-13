@@ -1,0 +1,341 @@
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+
+const API_BASE = 'http://localhost:3001/api';
+
+// Export types first
+export interface Topic {
+  id: string;
+  name: string;
+  description: string;
+  class_id: string;
+  subject_id: string;
+  subject_name?: string;
+  order_index: number;
+  status: 'planned' | 'in_progress' | 'completed';
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ClassData {
+  id: string;
+  name: string;
+  section: string;
+  description: string;
+  teacher_id: string;
+  teacher_name: string;
+  academic_year_id: string;
+  capacity: number;
+  total_students: number;
+  total_topics: number;
+  topics: Topic[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ClassFormData {
+  name: string;
+  section: string;
+  description: string;
+  teacher_id: string;
+  academic_year_id: string;
+  capacity: number;
+}
+
+export interface TopicFormData {
+  name: string;
+  description: string;
+  subject_id: string;
+  order_index: number;
+  status: 'planned' | 'in_progress' | 'completed';
+}
+
+interface ClassesStats {
+  totalClasses: number;
+  totalStudents: number;
+  totalTopics: number;
+  averageStudentsPerClass: number;
+}
+
+// Main hook
+export function useClassesManagement() {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+
+  // Get authentication token
+  const getAuthToken = () => {
+    return localStorage.getItem('auth_token');
+  };
+
+  // Helper function for authenticated requests
+  const fetchWithAuth = async (url: string, options: RequestInit = {}) => {
+    const token = getAuthToken();
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+        ...options.headers,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    return response.json();
+  };
+
+  // Fetch classes
+  const {
+    data: classes = [],
+    isLoading: classesLoading,
+    error: classesError,
+    refetch: refetchClasses
+  } = useQuery({
+    queryKey: ['classes'],
+    queryFn: () => fetchWithAuth(`${API_BASE}/classes`),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
+
+  // Create class mutation
+  const createClassMutation = useMutation({
+    mutationFn: (classData: ClassFormData) =>
+      fetchWithAuth(`${API_BASE}/classes`, {
+        method: 'POST',
+        body: JSON.stringify(classData),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['classes'] });
+    },
+  });
+
+  // Update class mutation
+  const updateClassMutation = useMutation({
+    mutationFn: ({ id, classData }: { id: string; classData: ClassFormData }) =>
+      fetchWithAuth(`${API_BASE}/classes/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(classData),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['classes'] });
+    },
+  });
+
+  // Delete class mutation
+  const deleteClassMutation = useMutation({
+    mutationFn: (id: string) =>
+      fetchWithAuth(`${API_BASE}/classes/${id}`, {
+        method: 'DELETE',
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['classes'] });
+    },
+  });
+
+  // Topic mutations
+  const createTopicMutation = useMutation({
+    mutationFn: ({ classId, topicData }: { classId: string; topicData: TopicFormData }) =>
+      fetchWithAuth(`${API_BASE}/classes/${classId}/topics`, {
+        method: 'POST',
+        body: JSON.stringify(topicData),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['classes'] });
+    },
+  });
+
+  const updateTopicMutation = useMutation({
+    mutationFn: ({ id, topicData }: { id: string; topicData: Partial<TopicFormData> }) =>
+      fetchWithAuth(`${API_BASE}/topics/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(topicData),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['classes'] });
+    },
+  });
+
+  const deleteTopicMutation = useMutation({
+    mutationFn: (id: string) =>
+      fetchWithAuth(`${API_BASE}/topics/${id}`, {
+        method: 'DELETE',
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['classes'] });
+    },
+  });
+
+  const reorderTopicsMutation = useMutation({
+    mutationFn: ({ classId, topics }: { classId: string; topics: { id: string; order_index: number }[] }) =>
+      fetchWithAuth(`${API_BASE}/classes/${classId}/topics/reorder`, {
+        method: 'PUT',
+        body: JSON.stringify({ topics }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['classes'] });
+    },
+  });
+
+  // Action functions
+  const createClass = async (classData: ClassFormData) => {
+    setLoading(true);
+    setError(null);
+    try {
+      await createClassMutation.mutateAsync(classData);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to create class';
+      setError(errorMessage);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updateClass = async (id: string, classData: ClassFormData) => {
+    setLoading(true);
+    setError(null);
+    try {
+      await updateClassMutation.mutateAsync({ id, classData });
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to update class';
+      setError(errorMessage);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const deleteClass = async (id: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      await deleteClassMutation.mutateAsync(id);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to delete class';
+      setError(errorMessage);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const createTopic = async (classId: string, topicData: TopicFormData) => {
+    setLoading(true);
+    setError(null);
+    try {
+      await createTopicMutation.mutateAsync({ classId, topicData });
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to create topic';
+      setError(errorMessage);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updateTopic = async (id: string, topicData: Partial<TopicFormData>) => {
+    setLoading(true);
+    setError(null);
+    try {
+      await updateTopicMutation.mutateAsync({ id, topicData });
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to update topic';
+      setError(errorMessage);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const deleteTopic = async (id: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      await deleteTopicMutation.mutateAsync(id);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to delete topic';
+      setError(errorMessage);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const reorderTopics = async (classId: string, topics: { id: string; order_index: number }[]) => {
+    setLoading(true);
+    setError(null);
+    try {
+      await reorderTopicsMutation.mutateAsync({ classId, topics });
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to reorder topics';
+      setError(errorMessage);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Helper functions
+  const searchClasses = (searchTerm: string) => {
+    return classes.filter((cls: ClassData) =>
+      cls.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      cls.section.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      cls.teacher_name?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  };
+
+  const getClassesStats = (): ClassesStats => {
+    const totalClasses = classes.length;
+    const totalStudents = classes.reduce((sum: number, cls: ClassData) => sum + (cls.total_students || 0), 0);
+    const totalTopics = classes.reduce((sum: number, cls: ClassData) => sum + (cls.total_topics || 0), 0);
+    const averageStudentsPerClass = totalClasses > 0 ? Math.round(totalStudents / totalClasses) : 0;
+
+    return {
+      totalClasses,
+      totalStudents,
+      totalTopics,
+      averageStudentsPerClass,
+    };
+  };
+
+  const getClassesByTeacher = (teacherId: string) => {
+    return classes.filter((cls: ClassData) => cls.teacher_id === teacherId);
+  };
+
+  return {
+    // Data
+    classes,
+    loading: loading || classesLoading,
+    error: error || classesError?.message,
+    
+    // Statistics
+    stats: getClassesStats(),
+    
+    // Class actions
+    createClass,
+    updateClass,
+    deleteClass,
+    refetchClasses,
+    
+    // Topic actions
+    createTopic,
+    updateTopic,
+    deleteTopic,
+    reorderTopics,
+    
+    // Helpers
+    searchClasses,
+    getClassesByTeacher,
+    
+    // Mutation states
+    isCreatingClass: createClassMutation.isPending,
+    isUpdatingClass: updateClassMutation.isPending,
+    isDeletingClass: deleteClassMutation.isPending,
+    isCreatingTopic: createTopicMutation.isPending,
+    isUpdatingTopic: updateTopicMutation.isPending,
+    isDeletingTopic: deleteTopicMutation.isPending,
+    isReorderingTopics: reorderTopicsMutation.isPending
+  };
+}

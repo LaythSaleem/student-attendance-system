@@ -1,0 +1,9 @@
+{
+  "app_name": "Scholar Track Pulse",
+  "version": "1.0.0",
+  "build_date": "2025-06-13T22:21:41Z",
+  "deployment_target": "Cloudways",
+  "node_version_required": ">=18.0.0",
+  "startup_file": "production-server.js",
+  "health_check": "/api/health"
+}

@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Login & Settings Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; }
+        .section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { background-color: #e8f5e9; border-color: #4caf50; }
+        .error { background-color: #ffebee; border-color: #f44336; }
+        .info { background-color: #e3f2fd; border-color: #2196f3; }
+        button { padding: 10px 20px; margin: 5px; background: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        pre { background: #f5f5f5; padding: 10px; border-radius: 3px; overflow-x: auto; }
+        input { padding: 8px; margin: 5px; border: 1px solid #ddd; border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <h1>🔧 Admin Login & Settings Debugger</h1>
+    <p>Use this tool to diagnose and fix authentication issues with the System Settings page.</p>
+
+    <div id="status" class="section info">
+        <h3>🔍 Current Status</h3>
+        <p id="statusText">Checking authentication status...</p>
+    </div>
+
+    <div class="section">
+        <h3>🔐 Step 1: Admin Login</h3>
+        <p>Login with admin credentials to get a fresh token:</p>
+        <input type="email" id="email" placeholder="Email" value="admin@school.com">
+        <input type="password" id="password" placeholder="Password" value="admin123">
+        <button onclick="loginAdmin()">Login as Admin</button>
+        <div id="loginResult"></div>
+    </div>
+
+    <div class="section">
+        <h3>⚙️ Step 2: Test Settings Access</h3>
+        <p>Test if you can access the settings API:</p>
+        <button onclick="testSettingsAPI()" id="testBtn" disabled>Test Settings API</button>
+        <div id="settingsResult"></div>
+    </div>
+
+    <div class="section">
+        <h3>🚀 Step 3: Fix Main Application</h3>
+        <p>Once authenticated, these buttons will help you access the main app:</p>
+        <button onclick="openMainApp()">Open Main Application</button>
+        <button onclick="clearStorageAndReload()">Clear Storage & Reload</button>
+    </div>
+
+    <div class="section">
+        <h3>📋 Debug Information</h3>
+        <button onclick="showDebugInfo()">Show Debug Info</button>
+        <div id="debugInfo"></div>
+    </div>
+
+    <script>
+        function log(elementId, message, type = 'info') {
+            const element = document.getElementById(elementId);
+            const div = document.createElement('div');
+            div.style.padding = '10px';
+            div.style.margin = '10px 0';
+            div.style.borderRadius = '3px';
+            
+            if (type === 'success') {
+                div.style.backgroundColor = '#e8f5e9';
+                div.style.border = '1px solid #4caf50';
+            } else if (type === 'error') {
+                div.style.backgroundColor = '#ffebee';
+                div.style.border = '1px solid #f44336';
+            } else {
+                div.style.backgroundColor = '#f5f5f5';
+                div.style.border = '1px solid #ddd';
+            }
+            
+            div.innerHTML = message;
+            element.appendChild(div);
+            console.log(message);
+        }
+
+        function updateStatus() {
+            const token = localStorage.getItem('token');
+            const statusText = document.getElementById('statusText');
+            const testBtn = document.getElementById('testBtn');
+            
+            if (token) {
+                statusText.innerHTML = `✅ Token found (${token.length} characters)<br>Token preview: ${token.substring(0, 30)}...`;
+                testBtn.disabled = false;
+            } else {
+                statusText.innerHTML = '❌ No authentication token found. Please login first.';
+                testBtn.disabled = true;
+            }
+        }
+
+        async function loginAdmin() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            
+            log('loginResult', '🔐 Attempting admin login...', 'info');
+            
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    localStorage.setItem('token', data.token);
+                    log('loginResult', `✅ Login successful!<br>User: ${data.user.email}<br>Role: ${data.user.role}`, 'success');
+                    updateStatus();
+                } else {
+                    const error = await response.text();
+                    log('loginResult', `❌ Login failed: ${response.status}<br>${error}`, 'error');
+                }
+            } catch (error) {
+                log('loginResult', `❌ Login error: ${error.message}`, 'error');
+            }
+        }
+
+        async function testSettingsAPI() {
+            const token = localStorage.getItem('token');
+            
+            if (!token) {
+                log('settingsResult', '❌ No token available. Please login first.', 'error');
+                return;
+            }
+
+            log('settingsResult', '⚙️ Testing settings API...', 'info');
+            
+            try {
+                const response = await fetch('/api/settings', {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+
+                if (response.ok) {
+                    const settings = await response.json();
+                    const categories = Object.keys(settings);
+                    const totalSettings = categories.reduce((acc, cat) => acc + Object.keys(settings[cat]).length, 0);
+                    
+                    log('settingsResult', `✅ Settings API working!<br>Categories: ${categories.join(', ')}<br>Total settings: ${totalSettings}`, 'success');
+                    log('settingsResult', '<strong>You can now access the System Settings page in the main application!</strong>', 'success');
+                } else {
+                    const errorText = await response.text();
+                    log('settingsResult', `❌ Settings API failed: ${response.status}<br>${errorText}`, 'error');
+                    
+                    if (response.status === 401 || response.status === 403) {
+                        log('settingsResult', '💡 Solution: Your token may have expired. Try logging in again.', 'info');
+                    }
+                }
+            } catch (error) {
+                log('settingsResult', `❌ Network error: ${error.message}`, 'error');
+            }
+        }
+
+        function openMainApp() {
+            window.open('/', '_blank');
+        }
+
+        function clearStorageAndReload() {
+            localStorage.clear();
+            sessionStorage.clear();
+            log('debugInfo', '🗑️ Storage cleared. Reloading page...', 'info');
+            setTimeout(() => window.location.reload(), 1000);
+        }
+
+        function showDebugInfo() {
+            const token = localStorage.getItem('token');
+            const debugInfo = {
+                'Current URL': window.location.href,
+                'Local Storage Token': token ? 'Present (' + token.length + ' chars)' : 'Not found',
+                'User Agent': navigator.userAgent,
+                'Timestamp': new Date().toISOString()
+            };
+            
+            let debugHTML = '<h4>Debug Information:</h4><pre>';
+            for (const [key, value] of Object.entries(debugInfo)) {
+                debugHTML += `${key}: ${value}\n`;
+            }
+            debugHTML += '</pre>';
+            
+            if (token) {
+                try {
+                    const payload = JSON.parse(atob(token.split('.')[1]));
+                    debugHTML += '<h4>Token Payload:</h4><pre>' + JSON.stringify(payload, null, 2) + '</pre>';
+                    
+                    const expiry = new Date(payload.exp * 1000);
+                    const now = new Date();
+                    if (expiry < now) {
+                        debugHTML += '<p style="color: red;"><strong>⚠️ Token has expired!</strong></p>';
+                    } else {
+                        debugHTML += `<p style="color: green;"><strong>✅ Token valid until: ${expiry.toLocaleString()}</strong></p>`;
+                    }
+                } catch (e) {
+                    debugHTML += '<p style="color: red;">❌ Invalid token format</p>';
+                }
+            }
+            
+            document.getElementById('debugInfo').innerHTML = debugHTML;
+        }
+
+        // Initialize
+        updateStatus();
+        log('debugInfo', '🚀 Debug tool loaded. Use the steps above to fix authentication.', 'info');
+    </script>
+</body>
+</html>

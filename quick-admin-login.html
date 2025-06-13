@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quick Admin Login</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            max-width: 400px; 
+            margin: 100px auto; 
+            padding: 20px; 
+            background: #f5f5f5;
+        }
+        .container { 
+            background: white; 
+            padding: 30px; 
+            border-radius: 10px; 
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 { color: #333; text-align: center; margin-bottom: 30px; }
+        button { 
+            width: 100%; 
+            padding: 15px; 
+            background: #007bff; 
+            color: white; 
+            border: none; 
+            border-radius: 5px; 
+            font-size: 16px;
+            cursor: pointer; 
+            margin: 10px 0;
+        }
+        button:hover { background: #0056b3; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        .success { background: #28a745 !important; }
+        .status { 
+            padding: 15px; 
+            margin: 15px 0; 
+            border-radius: 5px; 
+            text-align: center;
+        }
+        .status.success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .status.error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .status.info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        .actions { margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Quick Admin Login</h1>
+        <p style="text-align: center; color: #666; margin-bottom: 30px;">
+            Quickly login as admin to access system settings
+        </p>
+        
+        <div id="status"></div>
+        
+        <button id="loginBtn" onclick="quickLogin()">
+            🔐 Login as Admin
+        </button>
+        
+        <button id="openAppBtn" onclick="openMainApp()" disabled>
+            🚀 Open Main Application
+        </button>
+        
+        <div class="actions">
+            <button onclick="clearStorage()" style="background: #dc3545;">
+                🗑️ Clear Browser Storage
+            </button>
+            <button onclick="testSettings()" id="testBtn" disabled style="background: #17a2b8;">
+                ⚙️ Test Settings Access
+            </button>
+        </div>
+        
+        <div style="margin-top: 30px; padding: 15px; background: #f8f9fa; border-radius: 5px; font-size: 14px;">
+            <strong>Credentials:</strong><br>
+            Email: admin@school.com<br>
+            Password: admin123
+        </div>
+    </div>
+
+    <script>
+        function showStatus(message, type = 'info') {
+            const statusDiv = document.getElementById('status');
+            statusDiv.innerHTML = message;
+            statusDiv.className = `status ${type}`;
+            console.log(message);
+        }
+
+        async function quickLogin() {
+            const loginBtn = document.getElementById('loginBtn');
+            const openAppBtn = document.getElementById('openAppBtn');
+            const testBtn = document.getElementById('testBtn');
+            
+            loginBtn.disabled = true;
+            loginBtn.textContent = '🔄 Logging in...';
+            
+            try {
+                showStatus('🔐 Attempting admin login...', 'info');
+                
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: 'admin@school.com',
+                        password: 'admin123'
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    localStorage.setItem('auth_token', data.token); // Fixed: Use correct token key
+                    
+                    showStatus(`✅ Login successful!<br>
+                        User: ${data.user.email}<br>
+                        Role: ${data.user.role}<br>
+                        <strong>You can now access System Settings!</strong>`, 'success');
+                    
+                    loginBtn.textContent = '✅ Logged In';
+                    loginBtn.className = 'success';
+                    openAppBtn.disabled = false;
+                    testBtn.disabled = false;
+                } else {
+                    const error = await response.text();
+                    showStatus(`❌ Login failed: ${response.status}<br>${error}`, 'error');
+                    loginBtn.disabled = false;
+                    loginBtn.textContent = '🔐 Retry Login';
+                }
+            } catch (error) {
+                showStatus(`❌ Network error: ${error.message}`, 'error');
+                loginBtn.disabled = false;
+                loginBtn.textContent = '🔐 Retry Login';
+            }
+        }
+
+        async function testSettings() {
+            const token = localStorage.getItem('auth_token'); // Fixed: Use correct token key
+            
+            if (!token) {
+                showStatus('❌ No token found. Please login first.', 'error');
+                return;
+            }
+
+            try {
+                showStatus('⚙️ Testing settings access...', 'info');
+                
+                const response = await fetch('/api/settings', {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+
+                if (response.ok) {
+                    const settings = await response.json();
+                    const categories = Object.keys(settings);
+                    showStatus(`✅ Settings access confirmed!<br>
+                        Categories: ${categories.join(', ')}<br>
+                        <strong>System Settings page should work now!</strong>`, 'success');
+                } else {
+                    showStatus(`❌ Settings access failed: ${response.status}`, 'error');
+                }
+            } catch (error) {
+                showStatus(`❌ Error testing settings: ${error.message}`, 'error');
+            }
+        }
+
+        function openMainApp() {
+            showStatus('🚀 Opening main application...', 'info');
+            window.open('/', '_blank');
+        }
+
+        function clearStorage() {
+            localStorage.clear();
+            sessionStorage.clear();
+            showStatus('🗑️ Browser storage cleared. You may need to login again.', 'info');
+            
+            const loginBtn = document.getElementById('loginBtn');
+            const openAppBtn = document.getElementById('openAppBtn');
+            const testBtn = document.getElementById('testBtn');
+            
+            loginBtn.disabled = false;
+            loginBtn.textContent = '🔐 Login as Admin';
+            loginBtn.className = '';
+            openAppBtn.disabled = true;
+            testBtn.disabled = true;
+        }
+
+        // Check if already logged in
+        window.onload = function() {
+            const token = localStorage.getItem('auth_token'); // Fixed: Use correct token key
+            if (token) {
+                try {
+                    const payload = JSON.parse(atob(token.split('.')[1]));
+                    const expiry = new Date(payload.exp * 1000);
+                    const now = new Date();
+                    
+                    if (expiry > now && payload.role === 'admin') {
+                        showStatus(`✅ Already logged in as ${payload.email}`, 'success');
+                        document.getElementById('loginBtn').textContent = '✅ Already Logged In';
+                        document.getElementById('loginBtn').className = 'success';
+                        document.getElementById('openAppBtn').disabled = false;
+                        document.getElementById('testBtn').disabled = false;
+                    } else {
+                        showStatus('⚠️ Token expired or invalid. Please login again.', 'error');
+                    }
+                } catch (e) {
+                    showStatus('⚠️ Invalid token found. Please login again.', 'error');
+                }
+            } else {
+                showStatus('ℹ️ No login token found. Please login as admin.', 'info');
+            }
+        };
+    </script>
+</body>
+</html>

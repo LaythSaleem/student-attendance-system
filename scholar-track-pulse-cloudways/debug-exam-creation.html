@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Exam Creation</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .form-group { 
+            margin-bottom: 15px; 
+        }
+        label { 
+            display: block; 
+            font-weight: bold; 
+            margin-bottom: 5px; 
+        }
+        input, select, textarea { 
+            width: 100%; 
+            padding: 8px; 
+            border: 1px solid #ccc; 
+            border-radius: 4px; 
+        }
+        button { 
+            background: #007bff; 
+            color: white; 
+            padding: 10px 20px; 
+            border: none; 
+            border-radius: 4px; 
+            cursor: pointer; 
+        }
+        button:hover { 
+            background: #0056b3; 
+        }
+        .response { 
+            margin-top: 20px; 
+            padding: 15px; 
+            border-radius: 4px; 
+            white-space: pre-wrap;
+        }
+        .success { 
+            background: #d4edda; 
+            border: 1px solid #c3e6cb; 
+            color: #155724; 
+        }
+        .error { 
+            background: #f8d7da; 
+            border: 1px solid #f5c6cb; 
+            color: #721c24; 
+        }
+        .info { 
+            background: #d1ecf1; 
+            border: 1px solid #bee5eb; 
+            color: #0c5460; 
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 Debug Exam Creation</h1>
+    <p>This page tests the exact exam creation flow to identify the issue.</p>
+
+    <div id="step1" class="response info">
+        <strong>Step 1:</strong> Please wait while we authenticate and load data...
+    </div>
+
+    <form id="examForm" style="display: none;">
+        <div class="form-group">
+            <label for="examType">Exam Type:</label>
+            <select id="examType" required>
+                <option value="">Select exam type...</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="stage">Medical Stage:</label>
+            <select id="stage" required>
+                <option value="">Select stage...</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="topic">Topic:</label>
+            <select id="topic">
+                <option value="none">No specific topic</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="title">Exam Title:</label>
+            <input type="text" id="title" value="Browser Debug Test Exam" required>
+        </div>
+
+        <div class="form-group">
+            <label for="description">Description:</label>
+            <textarea id="description">Testing exam creation from browser</textarea>
+        </div>
+
+        <div class="form-group">
+            <label for="date">Date:</label>
+            <input type="date" id="date" value="2025-07-15" required>
+        </div>
+
+        <div class="form-group">
+            <label for="startTime">Start Time:</label>
+            <input type="time" id="startTime" value="09:00">
+        </div>
+
+        <div class="form-group">
+            <label for="endTime">End Time:</label>
+            <input type="time" id="endTime" value="11:00">
+        </div>
+
+        <div class="form-group">
+            <label for="duration">Duration (minutes):</label>
+            <input type="number" id="duration" value="120">
+        </div>
+
+        <div class="form-group">
+            <label for="totalMarks">Total Marks:</label>
+            <input type="number" id="totalMarks" value="100">
+        </div>
+
+        <div class="form-group">
+            <label for="passMarks">Pass Marks:</label>
+            <input type="number" id="passMarks" value="40">
+        </div>
+
+        <button type="submit">Create Exam</button>
+    </form>
+
+    <div id="response"></div>
+
+    <script>
+        const API_BASE = 'http://localhost:3001/api';
+        let authToken = null;
+
+        function showResponse(message, type = 'info') {
+            const responseDiv = document.getElementById('response');
+            responseDiv.className = `response ${type}`;
+            responseDiv.textContent = message;
+        }
+
+        function updateStep1(message, type = 'info') {
+            const step1Div = document.getElementById('step1');
+            step1Div.className = `response ${type}`;
+            step1Div.innerHTML = `<strong>Step 1:</strong> ${message}`;
+        }
+
+        async function authenticate() {
+            try {
+                updateStep1('Authenticating...', 'info');
+                
+                const response = await fetch(`${API_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: 'admin@school.com',
+                        password: 'admin123'
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Authentication failed: ${response.status}`);
+                }
+
+                const data = await response.json();
+                authToken = data.token;
+                
+                updateStep1('Authentication successful! Loading exam types and stages...', 'success');
+                return true;
+            } catch (error) {
+                updateStep1(`Authentication failed: ${error.message}`, 'error');
+                return false;
+            }
+        }
+
+        async function loadData() {
+            try {
+                const authHeaders = {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${authToken}`
+                };
+
+                // Load exam types
+                const examTypesResponse = await fetch(`${API_BASE}/exam-types`, {
+                    headers: authHeaders
+                });
+
+                if (!examTypesResponse.ok) {
+                    throw new Error(`Failed to load exam types: ${examTypesResponse.status}`);
+                }
+
+                const examTypes = await examTypesResponse.json();
+                
+                // Load stages
+                const stagesResponse = await fetch(`${API_BASE}/teachers/available-topics`, {
+                    headers: authHeaders
+                });
+
+                if (!stagesResponse.ok) {
+                    throw new Error(`Failed to load stages: ${stagesResponse.status}`);
+                }
+
+                const stages = await stagesResponse.json();
+
+                // Populate exam types select
+                const examTypeSelect = document.getElementById('examType');
+                examTypes.forEach(type => {
+                    const option = document.createElement('option');
+                    option.value = type.id;
+                    option.textContent = type.name;
+                    examTypeSelect.appendChild(option);
+                });
+
+                // Populate stages select
+                const stageSelect = document.getElementById('stage');
+                stages.forEach(stage => {
+                    const option = document.createElement('option');
+                    option.value = stage.id;
+                    option.textContent = stage.name;
+                    stageSelect.appendChild(option);
+                });
+
+                // Update stage select to populate topics when changed
+                stageSelect.addEventListener('change', () => {
+                    const selectedStage = stages.find(s => s.id === stageSelect.value);
+                    const topicSelect = document.getElementById('topic');
+                    
+                    // Clear existing options except "none"
+                    topicSelect.innerHTML = '<option value="none">No specific topic</option>';
+                    
+                    if (selectedStage && selectedStage.topics) {
+                        selectedStage.topics.forEach(topic => {
+                            const option = document.createElement('option');
+                            option.value = topic.id;
+                            option.textContent = topic.name;
+                            topicSelect.appendChild(option);
+                        });
+                    }
+                });
+
+                updateStep1('Data loaded successfully! Form is ready.', 'success');
+                document.getElementById('examForm').style.display = 'block';
+
+            } catch (error) {
+                updateStep1(`Failed to load data: ${error.message}`, 'error');
+            }
+        }
+
+        document.getElementById('examForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            try {
+                showResponse('Creating exam...', 'info');
+
+                // Collect form data
+                const formData = {
+                    exam_type_id: document.getElementById('examType').value,
+                    class_id: document.getElementById('stage').value,
+                    topic_id: document.getElementById('topic').value,
+                    title: document.getElementById('title').value,
+                    description: document.getElementById('description').value,
+                    date: document.getElementById('date').value,
+                    start_time: document.getElementById('startTime').value,
+                    end_time: document.getElementById('endTime').value,
+                    duration_minutes: parseInt(document.getElementById('duration').value),
+                    total_marks: parseInt(document.getElementById('totalMarks').value),
+                    pass_marks: parseInt(document.getElementById('passMarks').value)
+                };
+
+                console.log('Form data:', formData);
+
+                // Process data (convert "none" to null like frontend does)
+                const processedData = {
+                    ...formData,
+                    topic_id: formData.topic_id === 'none' ? null : formData.topic_id
+                };
+
+                console.log('Processed data:', processedData);
+
+                const response = await fetch(`${API_BASE}/exams`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify(processedData)
+                });
+
+                console.log('Response status:', response.status);
+                console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('Error response:', errorText);
+                    
+                    let errorMessage;
+                    try {
+                        const errorJson = JSON.parse(errorText);
+                        errorMessage = errorJson.error || errorText;
+                    } catch (e) {
+                        errorMessage = errorText;
+                    }
+                    
+                    throw new Error(`HTTP ${response.status}: ${errorMessage}`);
+                }
+
+                const result = await response.json();
+                console.log('Success result:', result);
+
+                showResponse(`✅ Exam created successfully!
+ID: ${result.id}
+Title: ${result.title}
+Stage: ${result.class_name}
+Topic: ${result.topic_name || 'None'}
+Type: ${result.exam_type_name}`, 'success');
+
+            } catch (error) {
+                console.error('Form submission error:', error);
+                showResponse(`❌ Error creating exam: ${error.message}`, 'error');
+            }
+        });
+
+        // Initialize the page
+        async function init() {
+            const authSuccess = await authenticate();
+            if (authSuccess) {
+                await loadData();
+            }
+        }
+
+        init();
+    </script>
+</body>
+</html>

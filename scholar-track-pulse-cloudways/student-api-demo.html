@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student API Demo - Scholar Track Pulse</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .header { background: #3b82f6; color: white; padding: 20px; margin: -20px -20px 20px; border-radius: 8px 8px 0 0; }
+        .section { margin: 20px 0; padding: 20px; border: 1px solid #ddd; border-radius: 6px; }
+        .button { background: #3b82f6; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; margin: 5px; }
+        .button:hover { background: #2563eb; }
+        .button:disabled { background: #9ca3af; cursor: not-allowed; }
+        .success { color: #16a34a; font-weight: bold; }
+        .error { color: #dc2626; font-weight: bold; }
+        .class-card { border: 1px solid #e5e7eb; border-radius: 6px; padding: 15px; margin: 10px 0; background: #f9fafb; }
+        .topic { background: #f3f4f6; padding: 8px; margin: 4px 0; border-radius: 4px; font-size: 14px; }
+        .topic.completed { background: #dcfce7; color: #166534; }
+        .topic.in-progress { background: #dbeafe; color: #1e40af; }
+        .topic.planned { background: #f3f4f6; color: #6b7280; }
+        #output { background: #f8f9fa; border: 1px solid #ddd; padding: 15px; white-space: pre-wrap; font-family: monospace; max-height: 300px; overflow-y: auto; font-size: 14px; }
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin: 20px 0; }
+        .stat-card { background: #f8fafc; border: 1px solid #e2e8f0; padding: 15px; border-radius: 6px; text-align: center; }
+        .stat-number { font-size: 2em; font-weight: bold; color: #3b82f6; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎓 Student API Demo - Scholar Track Pulse</h1>
+            <p>Test the student classes functionality in the medical college management system</p>
+        </div>
+
+        <!-- Authentication Section -->
+        <div class="section">
+            <h2>👤 Student Authentication</h2>
+            <div>
+                <input type="email" id="email" placeholder="Student Email" value="john.doe@student.school.com" style="padding: 8px; margin: 5px; width: 250px;">
+                <input type="password" id="password" placeholder="Password" value="student123" style="padding: 8px; margin: 5px; width: 150px;">
+                <button class="button" onclick="loginStudent()">Login as Student</button>
+                <button class="button" onclick="logout()">Logout</button>
+            </div>
+            <div id="authStatus" style="margin-top: 10px;"></div>
+        </div>
+
+        <!-- Classes Section -->
+        <div class="section">
+            <h2>📚 Student Classes</h2>
+            <button class="button" onclick="loadStudentClasses()" id="loadClassesBtn" disabled>Load My Classes</button>
+            <button class="button" onclick="clearOutput()">Clear Output</button>
+            
+            <div id="classesStats" class="stats" style="display: none;">
+                <div class="stat-card">
+                    <div id="totalClasses" class="stat-number">0</div>
+                    <div>Total Classes</div>
+                </div>
+                <div class="stat-card">
+                    <div id="totalTopics" class="stat-number">0</div>
+                    <div>Total Topics</div>
+                </div>
+                <div class="stat-card">
+                    <div id="completedTopics" class="stat-number">0</div>
+                    <div>Completed Topics</div>
+                </div>
+            </div>
+            
+            <div id="classesOutput"></div>
+        </div>
+
+        <!-- Attendance Section -->
+        <div class="section">
+            <h2>📊 Student Attendance</h2>
+            <button class="button" onclick="loadStudentAttendance()" id="loadAttendanceBtn" disabled>Load My Attendance</button>
+            <div id="attendanceOutput"></div>
+        </div>
+
+        <!-- Debug Output -->
+        <div class="section">
+            <h2>🔍 Debug Output</h2>
+            <div id="output">Ready to test student functionality...</div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:3001/api';
+        let authToken = null;
+        
+        function log(message, type = 'info') {
+            const output = document.getElementById('output');
+            const timestamp = new Date().toLocaleTimeString();
+            const logClass = type === 'error' ? 'error' : (type === 'success' ? 'success' : '');
+            output.innerHTML += `<span class="${logClass}">[${timestamp}] ${message}</span>\n`;
+            output.scrollTop = output.scrollHeight;
+            console.log(message);
+        }
+        
+        function clearOutput() {
+            document.getElementById('output').innerHTML = '';
+            document.getElementById('classesOutput').innerHTML = '';
+            document.getElementById('attendanceOutput').innerHTML = '';
+            document.getElementById('classesStats').style.display = 'none';
+        }
+        
+        async function loginStudent() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            
+            log('🔐 Attempting student login...', 'info');
+            
+            try {
+                const response = await fetch(`${API_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Login failed: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                authToken = data.token;
+                
+                log(`✅ Student login successful!`, 'success');
+                log(`Student: ${data.user.email} (Role: ${data.user.role})`, 'success');
+                
+                document.getElementById('authStatus').innerHTML = `
+                    <div class="success">✅ Logged in as: ${data.user.email}</div>
+                `;
+                
+                // Enable buttons
+                document.getElementById('loadClassesBtn').disabled = false;
+                document.getElementById('loadAttendanceBtn').disabled = false;
+                
+            } catch (error) {
+                log(`❌ Login failed: ${error.message}`, 'error');
+                document.getElementById('authStatus').innerHTML = `
+                    <div class="error">❌ Login failed: ${error.message}</div>
+                `;
+            }
+        }
+        
+        function logout() {
+            authToken = null;
+            document.getElementById('authStatus').innerHTML = '';
+            document.getElementById('loadClassesBtn').disabled = true;
+            document.getElementById('loadAttendanceBtn').disabled = true;
+            clearOutput();
+            log('👋 Logged out', 'info');
+        }
+        
+        async function loadStudentClasses() {
+            if (!authToken) {
+                log('❌ Please login first', 'error');
+                return;
+            }
+            
+            log('📚 Loading student classes...', 'info');
+            
+            try {
+                const response = await fetch(`${API_BASE}/students/my-classes`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Failed to load classes: ${response.status}`);
+                }
+                
+                const classes = await response.json();
+                log(`✅ Loaded ${classes.length} classes successfully!`, 'success');
+                
+                // Update stats
+                const totalTopics = classes.reduce((sum, cls) => sum + cls.total_topics, 0);
+                const completedTopics = classes.reduce((sum, cls) => 
+                    sum + cls.topics.filter(topic => topic.status === 'completed').length, 0);
+                
+                document.getElementById('totalClasses').textContent = classes.length;
+                document.getElementById('totalTopics').textContent = totalTopics;
+                document.getElementById('completedTopics').textContent = completedTopics;
+                document.getElementById('classesStats').style.display = 'grid';
+                
+                // Display classes
+                const classesOutput = document.getElementById('classesOutput');
+                classesOutput.innerHTML = '<h3>📋 My Classes</h3>';
+                
+                classes.forEach((cls, index) => {
+                    const classCard = document.createElement('div');
+                    classCard.className = 'class-card';
+                    
+                    let topicsHtml = '';
+                    if (cls.topics.length > 0) {
+                        topicsHtml = '<div style="margin-top: 10px;"><strong>Topics:</strong>';
+                        cls.topics.forEach(topic => {
+                            const statusClass = topic.status.replace('_', '-');
+                            topicsHtml += `<div class="topic ${statusClass}">
+                                ${topic.status === 'completed' ? '✅' : topic.status === 'in_progress' ? '🔵' : '🕒'} 
+                                ${topic.name}
+                            </div>`;
+                        });
+                        topicsHtml += '</div>';
+                    }
+                    
+                    classCard.innerHTML = `
+                        <h4>${cls.name} - ${cls.section}</h4>
+                        <p><strong>Teacher:</strong> ${cls.teacher_name || 'Not assigned'}</p>
+                        <p><strong>Students:</strong> ${cls.total_students} | <strong>Topics:</strong> ${cls.total_topics}</p>
+                        ${cls.description ? `<p><strong>Description:</strong> ${cls.description}</p>` : ''}
+                        ${topicsHtml}
+                    `;
+                    
+                    classesOutput.appendChild(classCard);
+                });
+                
+            } catch (error) {
+                log(`❌ Failed to load classes: ${error.message}`, 'error');
+            }
+        }
+        
+        async function loadStudentAttendance() {
+            if (!authToken) {
+                log('❌ Please login first', 'error');
+                return;
+            }
+            
+            log('📊 Loading student attendance...', 'info');
+            
+            try {
+                const response = await fetch(`${API_BASE}/students/my-attendance`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Failed to load attendance: ${response.status}`);
+                }
+                
+                const attendance = await response.json();
+                log(`✅ Loaded ${attendance.length} attendance records`, 'success');
+                
+                const attendanceOutput = document.getElementById('attendanceOutput');
+                if (attendance.length === 0) {
+                    attendanceOutput.innerHTML = '<h3>📊 My Attendance</h3><p style="color: #6b7280; font-style: italic;">No attendance records found.</p>';
+                } else {
+                    attendanceOutput.innerHTML = '<h3>📊 My Attendance</h3>';
+                    // Display attendance records here if any exist
+                }
+                
+            } catch (error) {
+                log(`❌ Failed to load attendance: ${error.message}`, 'error');
+            }
+        }
+        
+        // Initialize
+        log('🚀 Student API Demo ready!');
+        log('📝 Try logging in with: john.doe@student.school.com / student123');
+    </script>
+</body>
+</html>

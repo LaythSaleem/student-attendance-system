@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Auth Debug</title>
+</head>
+<body>
+    <h1>Authentication Debug</h1>
+    <div id="results"></div>
+    
+    <script>
+        async function testAuth() {
+            const resultsDiv = document.getElementById('results');
+            
+            // Check if token exists
+            const token = localStorage.getItem('token');
+            resultsDiv.innerHTML += `<p>Token exists: ${!!token}</p>`;
+            if (token) {
+                resultsDiv.innerHTML += `<p>Token: ${token.substring(0, 50)}...</p>`;
+            }
+            
+            // Test login
+            try {
+                const loginResponse = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        email: 'admin@school.com',
+                        password: 'admin123'
+                    })
+                });
+                
+                if (loginResponse.ok) {
+                    const loginData = await loginResponse.json();
+                    localStorage.setItem('token', loginData.token);
+                    resultsDiv.innerHTML += `<p>Login successful! Token: ${loginData.token.substring(0, 50)}...</p>`;
+                    
+                    // Test users endpoint
+                    const usersResponse = await fetch('/api/users', {
+                        headers: {
+                            'Authorization': `Bearer ${loginData.token}`,
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                    
+                    if (usersResponse.ok) {
+                        const users = await usersResponse.json();
+                        resultsDiv.innerHTML += `<p>Users fetch successful! Count: ${users.length}</p>`;
+                    } else {
+                        resultsDiv.innerHTML += `<p>Users fetch failed: ${usersResponse.status} ${usersResponse.statusText}</p>`;
+                    }
+                } else {
+                    resultsDiv.innerHTML += `<p>Login failed: ${loginResponse.status} ${loginResponse.statusText}</p>`;
+                }
+            } catch (error) {
+                resultsDiv.innerHTML += `<p>Error: ${error.message}</p>`;
+            }
+        }
+        
+        testAuth();
+    </script>
+</body>
+</html>

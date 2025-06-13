@@ -1,0 +1,43 @@
+{
+  "name": "scholar-track-pulse",
+  "version": "1.0.0",
+  "description": "Student Attendance Management System - SQLite Version",
+  "main": "production-server.js",
+  "scripts": {
+    "start": "NODE_ENV=production node production-server.js",
+    "dev": "node server.cjs",
+    "test": "node production-server.js",
+    "init-db": "node init-db.cjs"
+  },
+  "keywords": [
+    "attendance",
+    "student-management",
+    "education",
+    "school-system",
+    "react",
+    "sqlite"
+  ],
+  "author": "Scholar Track Pulse Team",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "better-sqlite3": "^8.7.0",
+    "bcrypt": "^5.1.1",
+    "jsonwebtoken": "^9.0.2",
+    "uuid": "^9.0.1",
+    "multer": "^1.4.5-lts.1"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/scholar-track-pulse.git"
+  },
+  "bugs": {
+    "url": "https://github.com/your-username/scholar-track-pulse/issues"
+  },
+  "homepage": "https://your-domain.cloudwaysapps.com"
+}

@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Test - Teacher Dashboard</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-result { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .loading { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+        pre { background: #f8f9fa; padding: 10px; border-radius: 5px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>🧪 Teacher Dashboard API Test</h1>
+    <p>This page tests the same API calls that the Teacher Dashboard makes.</p>
+    
+    <button onclick="testAPIConnection()">🚀 Test API Connection</button>
+    <button onclick="clearResults()">🧹 Clear Results</button>
+    
+    <div id="results"></div>
+    
+    <script>
+        const API_BASE = 'http://localhost:8888/api';
+        
+        // Get auth token from localStorage (set by fix-auth.html)
+        function getAuthToken() {
+            return localStorage.getItem('auth_token');
+        }
+        
+        function addResult(test, status, data, error = null) {
+            const results = document.getElementById('results');
+            const div = document.createElement('div');
+            div.className = `test-result ${status}`;
+            
+            let content = `<h3>${test}</h3>`;
+            if (status === 'success') {
+                content += `<p>✅ SUCCESS</p>`;
+                if (data) {
+                    content += `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+                }
+            } else if (status === 'error') {
+                content += `<p>❌ ERROR: ${error}</p>`;
+                if (data) {
+                    content += `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+                }
+            } else {
+                content += `<p>⏳ ${data}</p>`;
+            }
+            
+            div.innerHTML = content;
+            results.appendChild(div);
+        }
+        
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+        }
+        
+        async function makeAPICall(endpoint, description) {
+            const token = getAuthToken();
+            
+            if (!token && endpoint !== '/health') {
+                addResult(description, 'error', null, 'No auth token found in localStorage');
+                return null;
+            }
+            
+            try {
+                addResult(description, 'loading', 'Making API call...');
+                
+                const headers = {
+                    'Content-Type': 'application/json'
+                };
+                
+                if (endpoint !== '/health') {
+                    headers['Authorization'] = `Bearer ${token}`;
+                }
+                
+                const response = await fetch(`${API_BASE}${endpoint}`, { headers });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    // Remove loading message
+                    const loadingDiv = document.querySelector('.test-result.loading:last-child');
+                    if (loadingDiv) loadingDiv.remove();
+                    
+                    addResult(description, 'success', data);
+                    return data;
+                } else {
+                    const errorData = await response.text();
+                    // Remove loading message
+                    const loadingDiv = document.querySelector('.test-result.loading:last-child');
+                    if (loadingDiv) loadingDiv.remove();
+                    
+                    addResult(description, 'error', errorData, `${response.status} ${response.statusText}`);
+                    return null;
+                }
+            } catch (error) {
+                // Remove loading message
+                const loadingDiv = document.querySelector('.test-result.loading:last-child');
+                if (loadingDiv) loadingDiv.remove();
+                
+                addResult(description, 'error', null, error.message);
+                return null;
+            }
+        }
+        
+        async function testAPIConnection() {
+            clearResults();
+            
+            // Show current auth status
+            const token = getAuthToken();
+            addResult('Auth Status', token ? 'success' : 'error', 
+                token ? 'Token found in localStorage' : 'No token in localStorage', 
+                token ? null : 'Please run fix-auth.html first');
+            
+            // Test the same endpoints that TeacherDashboardNew uses
+            const tests = [
+                ['/health', 'Health Check'],
+                ['/teachers/my-classes', 'My Classes'],
+                ['/teachers/dashboard-stats', 'Dashboard Stats'],
+                ['/teachers/recent-activity', 'Recent Activity'],
+                ['/teachers/my-topics', 'My Topics'],
+                ['/teachers/upcoming-exams', 'Upcoming Exams']
+            ];
+            
+            for (const [endpoint, description] of tests) {
+                await makeAPICall(endpoint, description);
+                // Small delay between requests
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            
+            addResult('Test Complete', 'success', 'All API tests completed');
+        }
+        
+        // Auto-run on page load if we have a token
+        window.addEventListener('load', () => {
+            const token = getAuthToken();
+            if (token) {
+                console.log('Auth token found, auto-running API test');
+                setTimeout(testAPIConnection, 500);
+            } else {
+                addResult('Initial Status', 'error', null, 'No auth token found. Please run fix-auth.html first to set authentication.');
+            }
+        });
+    </script>
+</body>
+</html>

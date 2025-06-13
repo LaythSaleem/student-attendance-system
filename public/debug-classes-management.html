@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Classes Management</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .button { padding: 10px 15px; margin: 5px; background: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer; }
+        .button:hover { background: #0056b3; }
+        .form { display: flex; flex-direction: column; gap: 10px; }
+        .form input, .form select { padding: 8px; border: 1px solid #ddd; border-radius: 3px; }
+        #output { background: #f8f9fa; border: 1px solid #ddd; padding: 10px; white-space: pre-wrap; font-family: monospace; max-height: 400px; overflow-y: auto; }
+        .error { color: red; }
+        .success { color: green; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Classes Management Debug Tool</h1>
+        
+        <!-- Authentication Section -->
+        <div class="section">
+            <h2>Authentication</h2>
+            <div class="form">
+                <input type="email" id="email" placeholder="Email (admin@school.com)" value="admin@school.com">
+                <input type="password" id="password" placeholder="Password (admin123)" value="admin123">
+                <button class="button" onclick="login()">Login</button>
+                <button class="button" onclick="logout()">Logout</button>
+                <button class="button" onclick="checkAuth()">Check Auth Status</button>
+            </div>
+        </div>
+
+        <!-- Classes Management Section -->
+        <div class="section">
+            <h2>Classes Management</h2>
+            <div class="form">
+                <input type="text" id="className" placeholder="Class Name" value="Test Class">
+                <input type="text" id="section" placeholder="Section" value="T">
+                <input type="text" id="description" placeholder="Description" value="Test Description">
+                <select id="teacherId">
+                    <option value="">Loading teachers...</option>
+                </select>
+                <select id="academicYearId">
+                    <option value="">Loading academic years...</option>
+                </select>
+                <input type="number" id="capacity" placeholder="Capacity" value="30">
+                <button class="button" onclick="createClass()">Create Class</button>
+                <button class="button" onclick="loadClasses()">Load Classes</button>
+                <button class="button" onclick="loadDropdownData()">Load Dropdown Data</button>
+            </div>
+        </div>
+
+        <!-- Test Output -->
+        <div class="section">
+            <h2>Output</h2>
+            <div id="output">Ready for testing...\n</div>
+            <button class="button" onclick="clearOutput()">Clear Output</button>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:3001/api';
+        let authToken = localStorage.getItem('auth_token');
+
+        function log(message, type = 'info') {
+            const output = document.getElementById('output');
+            const timestamp = new Date().toLocaleTimeString();
+            const className = type === 'error' ? 'error' : type === 'success' ? 'success' : '';
+            output.innerHTML += `[${timestamp}] ${message}\n`;
+            if (className) {
+                output.innerHTML = output.innerHTML.replace(message, `<span class="${className}">${message}</span>`);
+            }
+            output.scrollTop = output.scrollHeight;
+        }
+
+        function clearOutput() {
+            document.getElementById('output').innerHTML = 'Output cleared...\n';
+        }
+
+        async function apiCall(endpoint, options = {}) {
+            const token = localStorage.getItem('auth_token');
+            
+            const config = {
+                ...options,
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(token && { Authorization: `Bearer ${token}` }),
+                    ...options.headers,
+                },
+            };
+
+            try {
+                log(`Making API call to: ${endpoint}`);
+                log(`Request config: ${JSON.stringify(config, null, 2)}`);
+                
+                const response = await fetch(`${API_BASE}${endpoint}`, config);
+                
+                log(`Response status: ${response.status} ${response.statusText}`);
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`HTTP ${response.status}: ${errorText}`);
+                }
+
+                const data = await response.json();
+                log(`Response data: ${JSON.stringify(data, null, 2)}`, 'success');
+                return data;
+            } catch (error) {
+                log(`API Error: ${error.message}`, 'error');
+                throw error;
+            }
+        }
+
+        async function login() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+
+            try {
+                const data = await apiCall('/auth/login', {
+                    method: 'POST',
+                    body: JSON.stringify({ email, password }),
+                });
+
+                localStorage.setItem('auth_token', data.token);
+                localStorage.setItem('auth_user', JSON.stringify(data.user));
+                localStorage.setItem('user_role', data.user.role);
+                
+                authToken = data.token;
+                log('Login successful!', 'success');
+                
+        // Load dropdown data after login
+        await loadDropdownData();
+        await loadClasses();
+      } catch (error) {
+        log(`Login failed: ${error.message}`, 'error');
+      }
+        }
+
+        function logout() {
+            localStorage.removeItem('auth_token');
+            localStorage.removeItem('auth_user');
+            localStorage.removeItem('user_role');
+            authToken = null;
+            log('Logged out', 'success');
+        }
+
+        function checkAuth() {
+            const token = localStorage.getItem('auth_token');
+            const user = localStorage.getItem('auth_user');
+            const role = localStorage.getItem('user_role');
+            
+            log(`Auth Token: ${token ? 'Present' : 'Missing'}`);
+            log(`User Data: ${user || 'None'}`);
+            log(`User Role: ${role || 'None'}`);
+        }
+
+        async function loadDropdownData() {
+            try {
+                // Load teachers
+                const teachers = await apiCall('/teachers');
+                const teacherSelect = document.getElementById('teacherId');
+                teacherSelect.innerHTML = '<option value="">Select Teacher</option>';
+                teachers.forEach(teacher => {
+                    teacherSelect.innerHTML += `<option value="${teacher.id}">${teacher.name}</option>`;
+                });
+
+                // Load academic years
+                const academicYears = await apiCall('/academic-years');
+                const yearSelect = document.getElementById('academicYearId');
+                yearSelect.innerHTML = '<option value="">Select Academic Year</option>';
+                academicYears.forEach(year => {
+                    yearSelect.innerHTML += `<option value="${year.id}">${year.name} ${year.is_current ? '(Current)' : ''}</option>`;
+                });
+
+                log('Dropdown data loaded successfully', 'success');
+            } catch (error) {
+                log(`Failed to load dropdown data: ${error.message}`, 'error');
+            }
+        }
+
+        async function loadClasses() {
+            try {
+                const classes = await apiCall('/classes');
+                log(`Loaded ${classes.length} classes:`, 'success');
+                classes.forEach((cls, index) => {
+                    log(`${index + 1}. ${cls.name} (${cls.section}) - ${cls.teacher_name || 'No teacher'}`);
+                });
+            } catch (error) {
+                log(`Failed to load classes: ${error.message}`, 'error');
+            }
+        }
+
+        async function createClass() {
+            const classData = {
+                name: document.getElementById('className').value,
+                section: document.getElementById('section').value,
+                description: document.getElementById('description').value,
+                teacher_id: document.getElementById('teacherId').value,
+                academic_year_id: document.getElementById('academicYearId').value,
+                capacity: parseInt(document.getElementById('capacity').value) || 30
+            };
+
+            log(`Creating class with data: ${JSON.stringify(classData, null, 2)}`);
+
+            if (!classData.name || !classData.section) {
+                log('Class name and section are required!', 'error');
+                return;
+            }
+
+            if (!classData.academic_year_id) {
+                log('Academic year is required!', 'error');
+                return;
+            }
+
+            try {
+                const result = await apiCall('/classes', {
+                    method: 'POST',
+                    body: JSON.stringify(classData),
+                });
+
+                log('Class created successfully!', 'success');
+                log(`New class ID: ${result.id}`);
+                
+                // Reload classes to see the new one
+                await loadClasses();
+            } catch (error) {
+                log(`Failed to create class: ${error.message}`, 'error');
+            }
+        }
+
+        // Load dropdown data on page load if authenticated
+        window.onload = function() {
+            checkAuth();
+            if (localStorage.getItem('auth_token')) {
+                loadDropdownData();
+                loadClasses();
+            }
+        };
+    </script>
+</body>
+</html>

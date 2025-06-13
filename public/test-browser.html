@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Classes API Test</title>
+</head>
+<body>
+    <h1>Classes Management API Test</h1>
+    <div id="output"></div>
+    
+    <script>
+        const output = document.getElementById('output');
+        
+        function log(message) {
+            console.log(message);
+            output.innerHTML += '<p>' + message + '</p>';
+        }
+        
+        async function testClassesAPI() {
+            try {
+                log('🧪 Testing Classes API from Browser...');
+                
+                const API_BASE = 'http://localhost:3001/api';
+                
+                // 1. Login
+                log('1. Logging in...');
+                const loginResponse = await fetch(`${API_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: 'admin@school.com',
+                        password: 'admin123'
+                    })
+                });
+                
+                const loginData = await loginResponse.json();
+                const token = loginData.token;
+                log('✅ Login successful');
+                
+                // 2. Test fetching classes
+                log('2. Fetching classes...');
+                const classesResponse = await fetch(`${API_BASE}/classes`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                const classes = await classesResponse.json();
+                log(`✅ Found ${classes.length} classes`);
+                
+                // 3. Test creating a class
+                log('3. Testing class creation...');
+                const newClassData = {
+                    name: 'Browser Test Class',
+                    section: 'BTC',
+                    description: 'Test from browser',
+                    teacher_id: 'b299ebb2-56ec-4654-a1ed-928dd5ce9490',
+                    academic_year_id: 'ce79f9cc-3d93-4144-8282-21600c72d0d4',
+                    capacity: 20
+                };
+                
+                const createResponse = await fetch(`${API_BASE}/classes`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(newClassData)
+                });
+                
+                if (createResponse.ok) {
+                    const createdClass = await createResponse.json();
+                    log(`✅ Class created: ${createdClass.name}`);
+                    
+                    // 4. Test deleting the class
+                    log('4. Testing class deletion...');
+                    const deleteResponse = await fetch(`${API_BASE}/classes/${createdClass.id}`, {
+                        method: 'DELETE',
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    
+                    if (deleteResponse.ok) {
+                        log('✅ Class deleted successfully');
+                    } else {
+                        log('❌ Class deletion failed');
+                    }
+                } else {
+                    const error = await createResponse.text();
+                    log(`❌ Class creation failed: ${error}`);
+                }
+                
+                // 5. Test topic creation
+                log('5. Testing topic creation on existing class...');
+                if (classes.length > 0) {
+                    const topicData = {
+                        name: 'Browser Test Topic',
+                        description: 'Test topic from browser',
+                        subject_id: 'subject_1',
+                        order_index: 1,
+                        status: 'planned'
+                    };
+                    
+                    const topicResponse = await fetch(`${API_BASE}/classes/${classes[0].id}/topics`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify(topicData)
+                    });
+                    
+                    if (topicResponse.ok) {
+                        const createdTopic = await topicResponse.json();
+                        log(`✅ Topic created: ${createdTopic.name}`);
+                        
+                        // Delete the topic
+                        const deleteTopicResponse = await fetch(`${API_BASE}/topics/${createdTopic.id}`, {
+                            method: 'DELETE',
+                            headers: { 'Authorization': `Bearer ${token}` }
+                        });
+                        
+                        if (deleteTopicResponse.ok) {
+                            log('✅ Topic deleted successfully');
+                        }
+                    } else {
+                        const error = await topicResponse.text();
+                        log(`❌ Topic creation failed: ${error}`);
+                    }
+                }
+                
+                log('🎉 All tests completed!');
+                
+            } catch (error) {
+                log(`❌ Test failed: ${error.message}`);
+            }
+        }
+        
+        // Run the test
+        testClassesAPI();
+    </script>
+</body>
+</html>

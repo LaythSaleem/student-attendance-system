@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Quick Login and User Management Test</title>
+</head>
+<body>
+    <h1>Quick Login and User Management Test</h1>
+    <div id="results"></div>
+    <button onclick="login()">Login as Admin</button>
+    <button onclick="testUsers()">Test Users API</button>
+    <button onclick="goToUserManagement()">Go to User Management</button>
+    
+    <script>
+        const resultsDiv = document.getElementById('results');
+        
+        async function login() {
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        email: 'admin@school.com',
+                        password: 'admin123'
+                    })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    localStorage.setItem('auth_token', data.token);
+                    localStorage.setItem('auth_user', JSON.stringify(data.user));
+                    localStorage.setItem('user_role', data.user.role);
+                    resultsDiv.innerHTML += `<p>✅ Login successful! Role: ${data.user.role}</p>`;
+                } else {
+                    resultsDiv.innerHTML += `<p>❌ Login failed: ${response.status}</p>`;
+                }
+            } catch (error) {
+                resultsDiv.innerHTML += `<p>❌ Login error: ${error.message}</p>`;
+            }
+        }
+        
+        async function testUsers() {
+            const token = localStorage.getItem('auth_token');
+            if (!token) {
+                resultsDiv.innerHTML += `<p>❌ No token found. Please login first.</p>`;
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/users', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (response.ok) {
+                    const users = await response.json();
+                    resultsDiv.innerHTML += `<p>✅ Users fetch successful! Count: ${users.length}</p>`;
+                } else {
+                    resultsDiv.innerHTML += `<p>❌ Users fetch failed: ${response.status}</p>`;
+                }
+            } catch (error) {
+                resultsDiv.innerHTML += `<p>❌ Users error: ${error.message}</p>`;
+            }
+        }
+        
+        function goToUserManagement() {
+            window.location.href = '/admin';
+        }
+        
+        // Auto-login on page load
+        login();
+    </script>
+</body>
+</html>

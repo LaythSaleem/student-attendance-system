@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teacher Dashboard Test</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+</head>
+<body>
+    <div id="test-results"></div>
+    
+    <script>
+        console.log('🧪 TEACHER DASHBOARD FRONTEND TEST');
+        console.log('================================');
+        
+        // Test 1: Frontend accessibility
+        fetch('http://localhost:8082')
+            .then(response => {
+                if (response.ok) {
+                    console.log('✅ Frontend server accessible');
+                    return response.text();
+                } else {
+                    throw new Error(`Frontend not accessible: ${response.status}`);
+                }
+            })
+            .then(html => {
+                // Test 2: Check if React app is properly loaded
+                if (html.includes('root') && html.includes('script')) {
+                    console.log('✅ React app structure found');
+                } else {
+                    console.log('❌ React app structure missing');
+                }
+                
+                // Test 3: Test API connectivity from frontend
+                return fetch('http://localhost:8888/api/health');
+            })
+            .then(response => {
+                if (response.ok) {
+                    console.log('✅ Backend API accessible from frontend');
+                    return response.json();
+                } else {
+                    throw new Error(`Backend API not accessible: ${response.status}`);
+                }
+            })
+            .then(healthData => {
+                console.log('✅ Health check passed:', healthData);
+                
+                // Test 4: Test authentication endpoint
+                return fetch('http://localhost:8888/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: 'teacher@school.com',
+                        password: 'teacher123'
+                    })
+                });
+            })
+            .then(response => {
+                if (response.ok) {
+                    console.log('✅ Authentication endpoint working');
+                    return response.json();
+                } else {
+                    throw new Error(`Authentication failed: ${response.status}`);
+                }
+            })
+            .then(authData => {
+                console.log('✅ Authentication successful');
+                
+                // Test 5: Test teacher endpoints with token
+                return fetch('http://localhost:8888/api/teachers/my-classes', {
+                    headers: { 'Authorization': `Bearer ${authData.token}` }
+                });
+            })
+            .then(response => {
+                if (response.ok) {
+                    console.log('✅ Teacher endpoints accessible');
+                    return response.json();
+                } else {
+                    throw new Error(`Teacher endpoints failed: ${response.status}`);
+                }
+            })
+            .then(classesData => {
+                console.log(`✅ Classes loaded: ${classesData.length} classes`);
+                
+                // Display results
+                document.getElementById('test-results').innerHTML = `
+                    <h2>✅ All Frontend Tests Passed!</h2>
+                    <ul>
+                        <li>✅ Frontend server accessible</li>
+                        <li>✅ React app structure found</li>
+                        <li>✅ Backend API accessible</li>
+                        <li>✅ Authentication working</li>
+                        <li>✅ Teacher endpoints accessible</li>
+                        <li>✅ Classes loaded: ${classesData.length} classes</li>
+                    </ul>
+                    <p><strong>🎉 Teacher Dashboard is ready for use!</strong></p>
+                    <p><a href="http://localhost:8082" target="_blank">Open Teacher Dashboard</a></p>
+                `;
+            })
+            .catch(error => {
+                console.error('❌ Test failed:', error);
+                document.getElementById('test-results').innerHTML = `
+                    <h2>❌ Frontend Test Failed</h2>
+                    <p>Error: ${error.message}</p>
+                    <p>Check console for details</p>
+                `;
+            });
+    </script>
+</body>
+</html>

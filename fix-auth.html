@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fix Auth Token</title>
+</head>
+<body>
+    <h1>Authentication Fix</h1>
+    <p>This page will fix the authentication token and redirect to the main app.</p>
+    
+    <script>
+        // Admin user data (matching the database)
+        const userData = {
+            id: '261ea83f-beb5-41e3-8f48-f8692b6947d0',
+            email: 'admin@school.com',
+            role: 'admin'
+        };
+        
+        // Token generated with correct structure
+        const properToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiIyNjFlYTgzZi1iZWI1LTQxZTMtOGY0OC1mODY5MmI2OTQ3ZDAiLCJlbWFpbCI6ImFkbWluQHNjaG9vbC5jb20iLCJyb2xlIjoiYWRtaW4iLCJpYXQiOjE3NDk4MjcyMDUsImV4cCI6MTc0OTkxMzYwNX0.EVMfXWPQ8u19uSVB0NQy_B59JD3j_Aug2vTSN9-PqF0';
+        
+        // Clear existing auth data
+        localStorage.removeItem('auth_token');
+        localStorage.removeItem('auth_user');
+        localStorage.removeItem('user_role');
+        
+        // Set new auth data
+        localStorage.setItem('auth_token', properToken);
+        localStorage.setItem('auth_user', JSON.stringify(userData));
+        localStorage.setItem('user_role', userData.role);
+        
+        console.log('✅ Auth data updated in localStorage');
+        console.log('🎫 Token set successfully');
+        console.log('👤 User role:', userData.role);
+        
+        // Redirect to main app after a short delay
+        setTimeout(() => {
+            window.location.href = 'http://localhost:8084';
+        }, 2000);
+        
+        document.body.innerHTML += '<p>✅ Authentication fixed! Redirecting to main app...</p>';
+    </script>
+</body>
+</html>

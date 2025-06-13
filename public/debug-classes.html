@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Classes Management Debug Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .log { background: #f5f5f5; padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .error { background: #ffebee; color: #c62828; }
+        .success { background: #e8f5e9; color: #2e7d32; }
+        .warning { background: #fff3e0; color: #ef6c00; }
+        button { margin: 5px; padding: 8px 15px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>🔧 Classes Management Debug Test</h1>
+    <div id="output"></div>
+    
+    <h2>Manual Tests</h2>
+    <button onclick="testLogin()">Test Login</button>
+    <button onclick="testClassesFetch()">Test Fetch Classes</button>
+    <button onclick="testCreateClass()">Test Create Class</button>
+    <button onclick="testDeleteClass()">Test Delete Class</button>
+    <button onclick="testCreateTopic()">Test Create Topic</button>
+    <button onclick="clearLogs()">Clear Logs</button>
+    
+    <script>
+        const API_BASE = 'http://localhost:3001/api';
+        let authToken = null;
+        let testClassId = null;
+        
+        function log(message, type = 'info') {
+            const output = document.getElementById('output');
+            const div = document.createElement('div');
+            div.className = `log ${type}`;
+            div.innerHTML = `[${new Date().toLocaleTimeString()}] ${message}`;
+            output.appendChild(div);
+            console.log(message);
+            output.scrollTop = output.scrollHeight;
+        }
+        
+        function clearLogs() {
+            document.getElementById('output').innerHTML = '';
+        }
+        
+        async function testLogin() {
+            log('🔐 Testing login...', 'info');
+            try {
+                const response = await fetch(`${API_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: 'admin@school.com',
+                        password: 'admin123'
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Login failed: ${response.status} ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                authToken = data.token;
+                localStorage.setItem('auth_token', authToken);
+                
+                log(`✅ Login successful! Token: ${authToken.substring(0, 20)}...`, 'success');
+                return true;
+            } catch (error) {
+                log(`❌ Login failed: ${error.message}`, 'error');
+                return false;
+            }
+        }
+        
+        async function testClassesFetch() {
+            if (!authToken) {
+                const loginSuccess = await testLogin();
+                if (!loginSuccess) return;
+            }
+            
+            log('📚 Testing classes fetch...', 'info');
+            try {
+                const response = await fetch(`${API_BASE}/classes`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Fetch failed: ${response.status} ${response.statusText}`);
+                }
+                
+                const classes = await response.json();
+                log(`✅ Fetched ${classes.length} classes successfully`, 'success');
+                
+                classes.forEach((cls, index) => {
+                    log(`   ${index + 1}. ${cls.name} - ${cls.section} (${cls.total_students} students, ${cls.total_topics} topics)`);
+                });
+                
+                return classes;
+            } catch (error) {
+                log(`❌ Classes fetch failed: ${error.message}`, 'error');
+                return [];
+            }
+        }
+        
+        async function testCreateClass() {
+            if (!authToken) {
+                const loginSuccess = await testLogin();
+                if (!loginSuccess) return;
+            }
+            
+            log('➕ Testing class creation...', 'info');
+            
+            // First get dropdown data
+            try {
+                log('Getting dropdown data...', 'info');
+                const [teachersRes, academicYearsRes] = await Promise.all([
+                    fetch(`${API_BASE}/teachers/dropdown`, {
+                        headers: { 'Authorization': `Bearer ${authToken}` }
+                    }),
+                    fetch(`${API_BASE}/academic-years/dropdown`, {
+                        headers: { 'Authorization': `Bearer ${authToken}` }
+                    })
+                ]);
+                
+                const teachers = await teachersRes.json();
+                const academicYears = await academicYearsRes.json();
+                
+                log(`Found ${teachers.length} teachers, ${academicYears.length} academic years`);
+                
+                // Create test class
+                const classData = {
+                    name: 'Debug Test Class',
+                    section: 'DEBUG',
+                    description: 'Created from debug test',
+                    teacher_id: teachers[0]?.id || null,
+                    academic_year_id: academicYears[0]?.id || 'ce79f9cc-3d93-4144-8282-21600c72d0d4',
+                    capacity: 25
+                };
+                
+                log(`Creating class with data: ${JSON.stringify(classData, null, 2)}`);
+                
+                const response = await fetch(`${API_BASE}/classes`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify(classData)
+                });
+                
+                log(`Create response status: ${response.status}`);
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`Create failed: ${response.status} - ${errorText}`);
+                }
+                
+                const createdClass = await response.json();
+                testClassId = createdClass.id;
+                log(`✅ Class created successfully: ${createdClass.name} (ID: ${testClassId})`, 'success');
+                
+                return createdClass;
+            } catch (error) {
+                log(`❌ Class creation failed: ${error.message}`, 'error');
+                return null;
+            }
+        }
+        
+        async function testDeleteClass() {
+            if (!testClassId) {
+                log('⚠️ No test class to delete. Creating one first...', 'warning');
+                const created = await testCreateClass();
+                if (!created) return;
+            }
+            
+            log(`🗑️ Testing class deletion for ID: ${testClassId}...`, 'info');
+            
+            try {
+                const response = await fetch(`${API_BASE}/classes/${testClassId}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                
+                log(`Delete response status: ${response.status}`);
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`Delete failed: ${response.status} - ${errorText}`);
+                }
+                
+                const result = await response.json();
+                log(`✅ Class deleted successfully: ${result.message}`, 'success');
+                testClassId = null;
+                
+                return true;
+            } catch (error) {
+                log(`❌ Class deletion failed: ${error.message}`, 'error');
+                return false;
+            }
+        }
+        
+        async function testCreateTopic() {
+            if (!authToken) {
+                const loginSuccess = await testLogin();
+                if (!loginSuccess) return;
+            }
+            
+            // Get classes first
+            const classes = await testClassesFetch();
+            if (classes.length === 0) {
+                log('⚠️ No classes available for topic creation. Creating a class first...', 'warning');
+                const created = await testCreateClass();
+                if (!created) return;
+                testClassId = created.id;
+            } else {
+                testClassId = classes[0].id;
+            }
+            
+            log(`📝 Testing topic creation for class ID: ${testClassId}...`, 'info');
+            
+            try {
+                // Get subjects
+                const subjectsRes = await fetch(`${API_BASE}/subjects/dropdown`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                const subjects = await subjectsRes.json();
+                log(`Found ${subjects.length} subjects for topic creation`);
+                
+                const topicData = {
+                    name: 'Debug Test Topic',
+                    description: 'Created from debug test',
+                    subject_id: subjects[0]?.id || 'subject_1',
+                    order_index: 1,
+                    status: 'planned'
+                };
+                
+                log(`Creating topic with data: ${JSON.stringify(topicData, null, 2)}`);
+                
+                const response = await fetch(`${API_BASE}/classes/${testClassId}/topics`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify(topicData)
+                });
+                
+                log(`Topic create response status: ${response.status}`);
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`Topic creation failed: ${response.status} - ${errorText}`);
+                }
+                
+                const createdTopic = await response.json();
+                log(`✅ Topic created successfully: ${createdTopic.name} (ID: ${createdTopic.id})`, 'success');
+                
+                return createdTopic;
+            } catch (error) {
+                log(`❌ Topic creation failed: ${error.message}`, 'error');
+                return null;
+            }
+        }
+        
+        // Auto-run initial tests
+        window.onload = async function() {
+            log('🚀 Starting automated debug tests...', 'info');
+            
+            // Check if token exists in localStorage
+            const existingToken = localStorage.getItem('auth_token');
+            if (existingToken) {
+                authToken = existingToken;
+                log(`Found existing token: ${existingToken.substring(0, 20)}...`);
+            }
+            
+            // Run basic connectivity tests
+            await testLogin();
+            await testClassesFetch();
+            
+            log('✅ Initial tests complete. Use buttons above for manual testing.', 'success');
+        };
+    </script>
+</body>
+</html>

@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>User Management Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .result { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .success { background-color: #d4edda; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        button { margin: 5px; padding: 10px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>User Management Test</h1>
+    <div id="results"></div>
+    
+    <button onclick="testLogin()">1. Test Login</button>
+    <button onclick="testUsersAPI()">2. Test Users API</button>
+    <button onclick="simulateUserManagement()">3. Simulate UserManagement Component</button>
+    <button onclick="goToApp()">4. Go to App</button>
+    
+    <script>
+        const resultsDiv = document.getElementById('results');
+        
+        function addResult(message, success = true) {
+            const div = document.createElement('div');
+            div.className = `result ${success ? 'success' : 'error'}`;
+            div.innerHTML = message;
+            resultsDiv.appendChild(div);
+        }
+        
+        async function testLogin() {
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: 'admin@school.com',
+                        password: 'admin123'
+                    })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    localStorage.setItem('auth_token', data.token);
+                    localStorage.setItem('auth_user', JSON.stringify(data.user));
+                    localStorage.setItem('user_role', data.user.role);
+                    addResult(`✅ Login successful! Token stored. Role: ${data.user.role}`);
+                } else {
+                    addResult(`❌ Login failed: ${response.status}`, false);
+                }
+            } catch (error) {
+                addResult(`❌ Login error: ${error.message}`, false);
+            }
+        }
+        
+        async function testUsersAPI() {
+            const token = localStorage.getItem('auth_token');
+            if (!token) {
+                addResult('❌ No token found. Please login first.', false);
+                return;
+            }
+            
+            try {
+                console.log('Testing users API with token:', token.substring(0, 50) + '...');
+                
+                const response = await fetch('/api/users', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                console.log('Response status:', response.status);
+                console.log('Response ok:', response.ok);
+                
+                if (response.ok) {
+                    const users = await response.json();
+                    console.log('Users received:', users.length);
+                    addResult(`✅ Users API successful! Count: ${users.length}`);
+                    addResult(`Sample user: ${users[0].name} (${users[0].email}) - Role: ${users[0].role}`);
+                } else {
+                    const errorText = await response.text();
+                    console.error('Error response:', errorText);
+                    addResult(`❌ Users API failed: ${response.status} - ${errorText}`, false);
+                }
+            } catch (error) {
+                console.error('API Error:', error);
+                addResult(`❌ Users API error: ${error.message}`, false);
+            }
+        }
+        
+        async function simulateUserManagement() {
+            // Simulate the exact same flow as UserManagementPage component
+            const token = localStorage.getItem('auth_token');
+            if (!token) {
+                addResult('❌ No auth_token found. Please login first.', false);
+                return;
+            }
+            
+            try {
+                addResult('🔄 Simulating UserManagementPage fetch...');
+                
+                const headers = {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                };
+                
+                console.log('Headers:', headers);
+                
+                const response = await fetch('/api/users', { headers });
+                
+                console.log('Response status:', response.status);
+                console.log('Response ok:', response.ok);
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('Response error:', errorText);
+                    throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
+                }
+                
+                const data = await response.json();
+                console.log('Users data received:', data.length, 'users');
+                
+                addResult(`✅ UserManagement simulation successful! Users loaded: ${data.length}`);
+                
+                // Show some user data
+                data.slice(0, 3).forEach(user => {
+                    addResult(`👤 ${user.name} - ${user.email} (${user.role})`);
+                });
+                
+            } catch (error) {
+                console.error('Simulation error:', error);
+                addResult(`❌ UserManagement simulation failed: ${error.message}`, false);
+            }
+        }
+        
+        function goToApp() {
+            window.open('/admin', '_blank');
+        }
+        
+        // Auto-run tests
+        setTimeout(async () => {
+            await testLogin();
+            setTimeout(async () => {
+                await testUsersAPI();
+                setTimeout(simulateUserManagement, 1000);
+            }, 1000);
+        }, 500);
+    </script>
+</body>
+</html>
