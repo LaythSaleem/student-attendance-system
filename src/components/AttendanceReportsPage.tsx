@@ -123,7 +123,7 @@ interface DropdownData {
   teachers: Array<{ id: string; name: string; }>;
 }
 
-const API_BASE = 'http://localhost:8888/api';
+const API_BASE = 'https://scholar-track-pulse.onrender.com/api';
 
 export function AttendanceReportsPage() {
   const [loading, setLoading] = useState(false);

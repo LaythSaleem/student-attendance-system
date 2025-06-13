@@ -50,7 +50,7 @@ interface FormData {
   topicIds: string[];
 }
 
-const API_BASE = 'http://localhost:8888/api';
+const API_BASE = 'https://scholar-track-pulse.onrender.com/api';
 
 export function TeachersPage() {
   const [teachers, setTeachers] = useState<Teacher[]>([]);
