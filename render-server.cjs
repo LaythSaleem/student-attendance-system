@@ -298,6 +298,37 @@ app.get('/health', (req, res) => {
   }
 });
 
+// Debug endpoint to check database schema
+app.get('/debug/schema', (req, res) => {
+  try {
+    // Get all table names
+    const tables = db.prepare(`
+      SELECT name FROM sqlite_master 
+      WHERE type='table' AND name NOT LIKE 'sqlite_%'
+      ORDER BY name
+    `).all();
+    
+    // Get column info for each table
+    const schema = {};
+    tables.forEach(table => {
+      try {
+        const columns = db.prepare(`PRAGMA table_info(${table.name})`).all();
+        schema[table.name] = columns;
+      } catch (error) {
+        schema[table.name] = { error: error.message };
+      }
+    });
+    
+    res.json({
+      tables: tables.map(t => t.name),
+      schema: schema,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Authentication middleware
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
