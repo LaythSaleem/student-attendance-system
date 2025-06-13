@@ -617,16 +617,15 @@ app.get('/api/reports/daily-attendance', authenticateToken, (req, res) => {
 app.get('/api/teachers/dropdown', authenticateToken, (req, res) => {
   try {
     const teachers = db.prepare(`
-      SELECT t.id, t.first_name, t.last_name, t.subject, u.email
+      SELECT t.id, t.name, u.email
       FROM teachers t
       JOIN users u ON t.user_id = u.id
-      ORDER BY t.first_name, t.last_name
+      ORDER BY t.name
     `).all();
     
     res.json(teachers.map(t => ({
       id: t.id,
-      name: `${t.first_name} ${t.last_name}`,
-      subject: t.subject,
+      name: t.name,
       email: t.email
     })));
   } catch (error) {
@@ -727,9 +726,8 @@ app.get('/api/reports/attendance-detailed', authenticateToken, (req, res) => {
     let query = `
       SELECT 
         a.*,
-        s.first_name,
-        s.last_name,
-        s.student_id,
+        s.name as student_name,
+        s.roll_number,
         c.name as class_name
       FROM attendance a
       JOIN students s ON a.student_id = s.id
@@ -754,14 +752,11 @@ app.get('/api/reports/attendance-detailed', authenticateToken, (req, res) => {
       params.push(date_to);
     }
     
-    query += ` ORDER BY a.date DESC, s.first_name, s.last_name`;
+    query += ` ORDER BY a.date DESC, s.name`;
     
     const records = db.prepare(query).all(...params);
     
-    res.json(records.map(record => ({
-      ...record,
-      student_name: `${record.first_name} ${record.last_name}`
-    })));
+    res.json(records);
   } catch (error) {
     console.error('Error fetching detailed attendance reports:', error);
     res.status(500).json({ error: error.message });
@@ -778,9 +773,9 @@ app.get('/api/users', authenticateToken, requireRole('admin'), (req, res) => {
         u.created_at,
         ur.role,
         CASE 
-          WHEN ur.role = 'student' THEN s.first_name || ' ' || s.last_name
-          WHEN ur.role = 'teacher' THEN t.first_name || ' ' || t.last_name
-          WHEN ur.role = 'admin' THEN ap.first_name || ' ' || ap.last_name
+          WHEN ur.role = 'student' THEN s.name
+          WHEN ur.role = 'teacher' THEN t.name
+          WHEN ur.role = 'admin' THEN ap.name
           ELSE 'Unknown'
         END as full_name
       FROM users u
