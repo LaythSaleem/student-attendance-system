@@ -196,6 +196,34 @@ function initializeDatabase() {
       console.log('✅ Default teacher user created');
     }
 
+    // Add sample topic assignments if none exist
+    const assignmentCount = db.prepare('SELECT COUNT(*) as count FROM teacher_topic_assignments').get().count;
+    if (assignmentCount === 0) {
+      console.log('🔗 Adding sample teacher topic assignments...');
+      
+      const teachers = db.prepare('SELECT id, name FROM teachers').all();
+      const topics = db.prepare('SELECT id, name, class_id FROM topics').all();
+      
+      if (teachers.length > 0 && topics.length > 0) {
+        teachers.forEach((teacher, teacherIndex) => {
+          // Assign 2-3 topics to each teacher
+          const topicsToAssign = Math.min(topics.length, Math.floor(Math.random() * 2) + 2);
+          const shuffledTopics = [...topics].sort(() => Math.random() - 0.5);
+          
+          for (let i = 0; i < topicsToAssign; i++) {
+            const topic = shuffledTopics[i];
+            const assignmentId = require('uuid').v4();
+            
+            db.prepare(`
+              INSERT INTO teacher_topic_assignments (id, teacher_id, topic_id, status, assigned_at)
+              VALUES (?, ?, ?, 'active', CURRENT_TIMESTAMP)
+            `).run(assignmentId, teacher.id, topic.id);
+          }
+        });
+        console.log('✅ Sample topic assignments created');
+      }
+    }
+
     console.log('✅ Database schema initialized');
   } catch (error) {
     console.error('❌ Database initialization failed:', error);
@@ -766,7 +794,27 @@ app.get('/api/teachers', authenticateToken, requireRole('admin'), (req, res) => 
       GROUP BY t.id
     `).all();
     
-    res.json(teachers);
+    // Get topics for each teacher
+    const teachersWithTopics = teachers.map(teacher => {
+      const topics = db.prepare(`
+        SELECT tp.id, tp.name, tp.description, tp.status, tp.order_index,
+               c.name as class_name, c.id as class_id
+        FROM teacher_topic_assignments tta
+        JOIN topics tp ON tta.topic_id = tp.id
+        JOIN classes c ON tp.class_id = c.id
+        WHERE tta.teacher_id = ? AND tta.status = 'active'
+        ORDER BY c.name, tp.order_index
+      `).all(teacher.id);
+      
+      return {
+        ...teacher,
+        topics: topics,
+        topic_count: topics.length,
+        topics_assigned: topics.length > 0 ? `${topics.length} topics` : 'No topics assigned'
+      };
+    });
+    
+    res.json(teachersWithTopics);
   } catch (error) {
     console.error('Error fetching teachers:', error);
     res.status(500).json({ error: error.message });
