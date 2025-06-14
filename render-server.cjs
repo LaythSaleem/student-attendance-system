@@ -1511,6 +1511,55 @@ app.get('/api/teachers/weekly-attendance', authenticateToken, requireRole('teach
   }
 });
 
+// Teacher attendance reports endpoint
+app.get('/api/teachers/attendance-reports', authenticateToken, requireRole('teacher'), (req, res) => {
+  try {
+    const { classId, date } = req.query;
+    const teacherId = req.user.userId;
+    
+    let query = `
+      SELECT 
+        a.id,
+        a.date,
+        a.status,
+        a.notes,
+        s.name as student_name,
+        s.roll_number,
+        c.name as class_name
+      FROM attendance a
+      JOIN students s ON a.student_id = s.id
+      JOIN classes c ON a.class_id = c.id
+      JOIN teacher_stage_assignments tsa ON c.id = tsa.class_id
+      WHERE tsa.teacher_id = ?
+    `;
+    
+    const params = [teacherId];
+    
+    if (classId && classId !== 'all') {
+      query += ` AND a.class_id = ?`;
+      params.push(classId);
+    }
+    
+    if (date) {
+      query += ` AND a.date = ?`;
+      params.push(date);
+    }
+    
+    query += ` ORDER BY a.date DESC, s.name`;
+    
+    const reports = db.prepare(query).all(...params);
+    
+    res.json(reports);
+  } catch (error) {
+    console.error('Error fetching teacher attendance reports:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/teachers/weekly-attendance', authenticateToken, requireRole('teacher'), (req, res) => {
+// ...existing code...
+});
+
 // Catch-all handler: send back index.html for any non-API routes
 app.get('*', (req, res) => {
   if (!req.path.startsWith('/api') && !req.path.startsWith('/health')) {
