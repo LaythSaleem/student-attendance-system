@@ -1723,8 +1723,8 @@ app.post('/api/teachers/attendance-records', authenticateToken, requireRole('tea
     
     // Begin transaction
     const insertOrUpdate = db.prepare(`
-      INSERT OR REPLACE INTO attendance (id, student_id, class_id, date, status, notes, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      INSERT OR REPLACE INTO attendance (id, student_id, class_id, date, status, marked_by, notes, topic_id, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     `);
     
     const transaction = db.transaction((records) => {
@@ -1736,7 +1736,9 @@ app.post('/api/teachers/attendance-records', authenticateToken, requireRole('tea
           classId,
           date,
           record.status,
-          record.notes || null
+          req.user.userId,
+          record.notes || null,
+          topicId || null
         );
       }
     });
@@ -1777,9 +1779,9 @@ app.post('/api/teachers/photo-attendance', authenticateToken, requireRole('teach
       
       // Insert or update attendance record
       db.prepare(`
-        INSERT OR REPLACE INTO attendance (id, student_id, class_id, date, status, notes, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-      `).run(attendanceId, studentId, classId, date, status, notes || 'Photo attendance');
+        INSERT OR REPLACE INTO attendance (id, student_id, class_id, date, status, marked_by, notes, photo, topic_id, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      `).run(attendanceId, studentId, classId, date, status, req.user.userId, notes || 'Photo attendance', photo || null, topicId || null);
       
       results.push({
         attendanceId,
