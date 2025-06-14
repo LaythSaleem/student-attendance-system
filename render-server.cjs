@@ -1492,7 +1492,7 @@ app.get('/api/teachers/classes/:classId/students', authenticateToken, requireRol
       FROM students s
       JOIN student_enrollments se ON s.id = se.student_id
       JOIN classes c ON se.class_id = c.id
-      LEFT JOIN student_profiles sp ON s.user_id = sp.user_id
+      LEFT JOIN student_profiles sp ON s.id = sp.student_id
       WHERE se.class_id = ?
       ORDER BY s.roll_number, s.name
     `).all(classId, classId, classId, classId, classId);
