@@ -1755,29 +1755,45 @@ app.post('/api/teachers/attendance-records', authenticateToken, requireRole('tea
 });
 
 // Photo-based attendance endpoint
-app.post('/api/teachers/photo-attendance', authenticateToken, requireRole('teacher'), upload.single('photo'), (req, res) => {
+app.post('/api/teachers/photo-attendance', authenticateToken, requireRole('teacher'), (req, res) => {
   try {
-    const { classId, studentId, date, status } = req.body;
-    const photo = req.file;
+    const { classId, date, topicId, attendance } = req.body;
     
-    if (!classId || !studentId || !date || !status) {
-      return res.status(400).json({ error: 'Missing required fields' });
+    if (!classId || !date || !attendance || !Array.isArray(attendance)) {
+      return res.status(400).json({ error: 'Missing required fields: classId, date, attendance array' });
     }
     
-    // For now, just mark attendance without processing the photo
-    // In a real implementation, you'd use face recognition here
-    const attendanceId = uuidv4();
+    // Process each attendance record
+    const results = [];
     
-    db.prepare(`
-      INSERT OR REPLACE INTO attendance (id, student_id, class_id, date, status, notes, created_at)
-      VALUES (?, ?, ?, ?, ?, 'Submitted via photo', CURRENT_TIMESTAMP)
-    `).run(attendanceId, studentId, classId, date, status);
+    for (const record of attendance) {
+      const { studentId, status, photo, notes } = record;
+      
+      if (!studentId || !status) {
+        continue; // Skip invalid records
+      }
+      
+      const attendanceId = uuidv4();
+      
+      // Insert or update attendance record
+      db.prepare(`
+        INSERT OR REPLACE INTO attendance (id, student_id, class_id, date, status, notes, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      `).run(attendanceId, studentId, classId, date, status, notes || 'Photo attendance');
+      
+      results.push({
+        attendanceId,
+        studentId,
+        status,
+        photoProcessed: photo ? true : false
+      });
+    }
     
     res.json({ 
       success: true, 
-      message: 'Photo attendance recorded',
-      photoProcessed: photo ? true : false,
-      attendanceId 
+      message: `Photo attendance recorded for ${results.length} students`,
+      results,
+      topicId: topicId || null
     });
   } catch (error) {
     console.error('Error processing photo attendance:', error);
