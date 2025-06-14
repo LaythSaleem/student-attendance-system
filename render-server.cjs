@@ -1315,11 +1315,11 @@ app.get('/api/teachers/my-topics', authenticateToken, requireRole('teacher'), (r
     const topics = db.prepare(`
       SELECT 
         t.id,
-        t.name as title,
+        t.name,
         t.description,
         t.class_id,
         c.name as class_name,
-        c.section,
+        c.section as class_section,
         t.status,
         t.order_index
       FROM topics t
