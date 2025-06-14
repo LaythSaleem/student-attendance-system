@@ -490,6 +490,140 @@ app.get('/api/students/:id/profile', authenticateToken, (req, res) => {
   }
 });
 
+// Get individual student
+app.get('/api/students/:id', authenticateToken, (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const student = db.prepare(`
+      SELECT s.*, c.name as class_name 
+      FROM students s 
+      LEFT JOIN student_enrollments se ON s.id = se.student_id 
+      LEFT JOIN classes c ON se.class_id = c.id 
+      WHERE s.id = ? AND (se.status = 'active' OR se.status IS NULL)
+    `).get(id);
+
+    if (!student) {
+      return res.status(404).json({ error: 'Student not found' });
+    }
+
+    res.json(student);
+  } catch (error) {
+    console.error('Error fetching student:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update student
+app.put('/api/students/:id', authenticateToken, requireRole('admin'), (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, roll_number, class: studentClass, section, parent_phone, address } = req.body;
+
+    // Check if student exists
+    const existingStudent = db.prepare('SELECT id FROM students WHERE id = ?').get(id);
+    if (!existingStudent) {
+      return res.status(404).json({ error: 'Student not found' });
+    }
+
+    // Update student
+    const updateQuery = db.prepare(`
+      UPDATE students 
+      SET name = ?, roll_number = ?, class = ?, section = ?, parent_phone = ?, address = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `);
+    
+    const result = updateQuery.run(name, roll_number, studentClass, section, parent_phone, address, id);
+    
+    if (result.changes === 0) {
+      return res.status(500).json({ error: 'Failed to update student' });
+    }
+
+    // Return updated student
+    const updatedStudent = db.prepare(`
+      SELECT s.*, c.name as class_name 
+      FROM students s 
+      LEFT JOIN student_enrollments se ON s.id = se.student_id 
+      LEFT JOIN classes c ON se.class_id = c.id 
+      WHERE s.id = ? AND (se.status = 'active' OR se.status IS NULL)
+    `).get(id);
+
+    res.json(updatedStudent);
+  } catch (error) {
+    console.error('Error updating student:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Create new student
+app.post('/api/students', authenticateToken, requireRole('admin'), (req, res) => {
+  try {
+    const { name, roll_number, class: studentClass, section, parent_phone, address, email, password } = req.body;
+
+    // Create user account for student
+    const userId = uuidv4();
+    const studentId = uuidv4();
+    const hashedPassword = bcrypt.hashSync(password || 'student123', 10);
+
+    // Insert user
+    db.prepare(`
+      INSERT INTO users (id, email, password_hash) 
+      VALUES (?, ?, ?)
+    `).run(userId, email, hashedPassword);
+    
+    db.prepare(`
+      INSERT INTO user_roles (id, user_id, role) 
+      VALUES (?, ?, 'student')
+    `).run(uuidv4(), userId);
+    
+    // Insert student record
+    db.prepare(`
+      INSERT INTO students (id, user_id, name, roll_number, class, section, parent_phone, address) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(studentId, userId, name, roll_number, studentClass, section, parent_phone, address);
+
+    // Return created student
+    const createdStudent = db.prepare(`
+      SELECT s.*, c.name as class_name 
+      FROM students s 
+      LEFT JOIN student_enrollments se ON s.id = se.student_id 
+      LEFT JOIN classes c ON se.class_id = c.id 
+      WHERE s.id = ? AND (se.status = 'active' OR se.status IS NULL)
+    `).get(studentId);
+
+    res.status(201).json(createdStudent);
+  } catch (error) {
+    console.error('Error creating student:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete student
+app.delete('/api/students/:id', authenticateToken, requireRole('admin'), (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Check if student exists
+    const student = db.prepare('SELECT user_id FROM students WHERE id = ?').get(id);
+    if (!student) {
+      return res.status(404).json({ error: 'Student not found' });
+    }
+
+    // Delete student record (this will cascade to related records)
+    const result = db.prepare('DELETE FROM students WHERE id = ?').run(id);
+    
+    if (result.changes > 0) {
+      // Also delete the user account
+      db.prepare('DELETE FROM users WHERE id = ?').run(student.user_id);
+    }
+
+    res.json({ message: 'Student deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting student:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Classes endpoints
 app.get('/api/classes', authenticateToken, (req, res) => {
   try {
