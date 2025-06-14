@@ -1371,6 +1371,46 @@ app.get('/api/teachers/students-requiring-attention', authenticateToken, require
   }
 });
 
+// Students with attendance data
+app.get('/api/teachers/students-with-attendance', authenticateToken, requireRole('teacher'), (req, res) => {
+  try {
+    const teacherId = req.user.userId;
+    
+    // Get teacher record
+    const teacher = db.prepare('SELECT id FROM teachers WHERE user_id = ?').get(teacherId);
+    if (!teacher) {
+      return res.status(404).json({ error: 'Teacher profile not found' });
+    }
+
+    const students = db.prepare(`
+      SELECT 
+        s.id,
+        s.name,
+        s.roll_number,
+        c.name as class_name,
+        COUNT(CASE WHEN a.status = 'present' THEN 1 END) as present_count,
+        COUNT(CASE WHEN a.status = 'absent' THEN 1 END) as absent_count,
+        COUNT(a.id) as total_attendance,
+        ROUND(
+          CAST(COUNT(CASE WHEN a.status = 'present' THEN 1 END) AS FLOAT) * 100 / 
+          NULLIF(COUNT(a.id), 0), 2
+        ) as attendance_percentage
+      FROM students s
+      JOIN student_enrollments se ON s.id = se.student_id
+      JOIN classes c ON se.class_id = c.id
+      LEFT JOIN attendance a ON s.id = a.student_id AND a.class_id = c.id
+      WHERE c.teacher_id = ?
+      GROUP BY s.id, s.name, s.roll_number, c.name
+      ORDER BY s.name ASC
+    `).all(teacher.id);
+
+    res.json(students);
+  } catch (error) {
+    console.error('Error fetching students with attendance:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.get('/api/teachers/upcoming-exams', authenticateToken, requireRole('teacher'), (req, res) => {
   try {
     const teacherId = req.user.userId;
@@ -1380,8 +1420,8 @@ app.get('/api/teachers/upcoming-exams', authenticateToken, requireRole('teacher'
         e.id,
         e.title,
         e.description,
-        e.exam_date,
-        e.exam_time,
+        e.date as exam_date,
+        e.start_time as exam_time,
         e.duration_minutes,
         e.total_marks,
         c.name as class_name,
@@ -1389,8 +1429,8 @@ app.get('/api/teachers/upcoming-exams', authenticateToken, requireRole('teacher'
       FROM exams e
       JOIN classes c ON e.class_id = c.id
       LEFT JOIN exam_types et ON e.exam_type_id = et.id
-      WHERE e.created_by = ? AND e.exam_date >= date('now')
-      ORDER BY e.exam_date ASC, e.exam_time ASC
+      WHERE e.created_by = ? AND e.date >= date('now')
+      ORDER BY e.date ASC, e.start_time ASC
       LIMIT 10
     `).all(teacherId);
     
