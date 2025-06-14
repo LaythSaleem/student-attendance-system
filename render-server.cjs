@@ -953,7 +953,7 @@ app.get('/api/users', authenticateToken, requireRole('admin'), (req, res) => {
           WHEN ur.role = 'teacher' THEN t.name
           WHEN ur.role = 'admin' THEN ap.name
           ELSE 'Unknown'
-        END as full_name
+        END as name
       FROM users u
       LEFT JOIN user_roles ur ON u.id = ur.user_id
       LEFT JOIN students s ON u.id = s.user_id
