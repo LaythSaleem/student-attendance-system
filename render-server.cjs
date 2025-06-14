@@ -423,14 +423,50 @@ app.post('/api/auth/login', async (req, res) => {
 app.get('/api/students', authenticateToken, (req, res) => {
   try {
     const students = db.prepare(`
-      SELECT s.*, c.name as class_name, c.section 
+      SELECT 
+        s.id,
+        s.name,
+        s.roll_number as rollNumber,
+        s.class,
+        s.section,
+        s.parent_phone as parentPhone,
+        s.address,
+        s.created_at,
+        s.updated_at,
+        c.name as className,
+        CASE 
+          WHEN se.status IS NOT NULL THEN se.status 
+          ELSE 'active' 
+        END as status
       FROM students s 
       LEFT JOIN student_enrollments se ON s.id = se.student_id 
       LEFT JOIN classes c ON se.class_id = c.id 
       WHERE se.status = 'active' OR se.status IS NULL
     `).all();
     
-    res.json(students);
+    // Add attendance stats for each student
+    const studentsWithStats = students.map(student => {
+      const attendanceStats = db.prepare(`
+        SELECT 
+          COUNT(*) as total_records,
+          SUM(CASE WHEN status = 'present' THEN 1 ELSE 0 END) as present_count,
+          SUM(CASE WHEN status = 'absent' THEN 1 ELSE 0 END) as absent_count,
+          ROUND((SUM(CASE WHEN status = 'present' THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0)), 2) as attendance_percentage
+        FROM attendance 
+        WHERE student_id = ?
+      `).get(student.id) || { total_records: 0, present_count: 0, absent_count: 0, attendance_percentage: 0 };
+      
+      return {
+        ...student,
+        enrollmentNumber: student.rollNumber, // Add enrollment number field
+        attendancePercentage: attendanceStats.attendance_percentage || 0,
+        totalClasses: attendanceStats.total_records || 0,
+        presentDays: attendanceStats.present_count || 0,
+        absentDays: attendanceStats.absent_count || 0
+      };
+    });
+    
+    res.json(studentsWithStats);
   } catch (error) {
     console.error('Error fetching students:', error);
     res.status(500).json({ error: error.message });
@@ -518,7 +554,15 @@ app.get('/api/students/:id', authenticateToken, (req, res) => {
 app.put('/api/students/:id', authenticateToken, requireRole('admin'), (req, res) => {
   try {
     const { id } = req.params;
-    const { name, roll_number, class: studentClass, section, parent_phone, address } = req.body;
+    const studentData = req.body;
+    
+    // Convert camelCase to snake_case for database
+    const name = studentData.name;
+    const roll_number = studentData.rollNumber || studentData.roll_number;
+    const studentClass = studentData.class;
+    const section = studentData.section;
+    const parent_phone = studentData.parentPhone || studentData.parent_phone;
+    const address = studentData.address;
 
     // Check if student exists
     const existingStudent = db.prepare('SELECT id FROM students WHERE id = ?').get(id);
@@ -539,13 +583,20 @@ app.put('/api/students/:id', authenticateToken, requireRole('admin'), (req, res)
       return res.status(500).json({ error: 'Failed to update student' });
     }
 
-    // Return updated student
+    // Return updated student with camelCase fields for frontend
     const updatedStudent = db.prepare(`
-      SELECT s.*, c.name as class_name 
-      FROM students s 
-      LEFT JOIN student_enrollments se ON s.id = se.student_id 
-      LEFT JOIN classes c ON se.class_id = c.id 
-      WHERE s.id = ? AND (se.status = 'active' OR se.status IS NULL)
+      SELECT 
+        id,
+        name,
+        roll_number as rollNumber,
+        class,
+        section,
+        parent_phone as parentPhone,
+        address,
+        created_at,
+        updated_at
+      FROM students 
+      WHERE id = ?
     `).get(id);
 
     res.json(updatedStudent);
@@ -558,12 +609,22 @@ app.put('/api/students/:id', authenticateToken, requireRole('admin'), (req, res)
 // Create new student
 app.post('/api/students', authenticateToken, requireRole('admin'), (req, res) => {
   try {
-    const { name, roll_number, class: studentClass, section, parent_phone, address, email, password } = req.body;
+    const studentData = req.body;
+    
+    // Convert camelCase to snake_case for database
+    const name = studentData.name;
+    const roll_number = studentData.rollNumber || studentData.roll_number;
+    const studentClass = studentData.class;
+    const section = studentData.section;
+    const parent_phone = studentData.parentPhone || studentData.parent_phone;
+    const address = studentData.address;
+    const email = studentData.email;
+    const password = studentData.password || 'student123';
 
     // Create user account for student
     const userId = uuidv4();
     const studentId = uuidv4();
-    const hashedPassword = bcrypt.hashSync(password || 'student123', 10);
+    const hashedPassword = bcrypt.hashSync(password, 10);
 
     // Insert user
     db.prepare(`
@@ -582,16 +643,31 @@ app.post('/api/students', authenticateToken, requireRole('admin'), (req, res) =>
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(studentId, userId, name, roll_number, studentClass, section, parent_phone, address);
 
-    // Return created student
+    // Return created student with camelCase fields
     const createdStudent = db.prepare(`
-      SELECT s.*, c.name as class_name 
-      FROM students s 
-      LEFT JOIN student_enrollments se ON s.id = se.student_id 
-      LEFT JOIN classes c ON se.class_id = c.id 
-      WHERE s.id = ? AND (se.status = 'active' OR se.status IS NULL)
+      SELECT 
+        id,
+        name,
+        roll_number as rollNumber,
+        class,
+        section,
+        parent_phone as parentPhone,
+        address,
+        created_at,
+        updated_at
+      FROM students 
+      WHERE id = ?
     `).get(studentId);
 
-    res.status(201).json(createdStudent);
+    res.status(201).json({
+      ...createdStudent,
+      enrollmentNumber: createdStudent.rollNumber,
+      status: 'active',
+      attendancePercentage: 0,
+      totalClasses: 0,
+      presentDays: 0,
+      absentDays: 0
+    });
   } catch (error) {
     console.error('Error creating student:', error);
     res.status(500).json({ error: error.message });
