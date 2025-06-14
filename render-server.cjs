@@ -224,6 +224,52 @@ function initializeDatabase() {
       }
     }
 
+    // Add sample student profile pictures if they don't exist
+    const studentsWithoutPhotos = db.prepare(`
+      SELECT s.id, s.name 
+      FROM students s
+      LEFT JOIN student_profiles sp ON s.id = sp.student_id
+      WHERE sp.profile_picture IS NULL OR sp.profile_picture = '' OR sp.id IS NULL
+    `).all();
+
+    if (studentsWithoutPhotos.length > 0) {
+      console.log(`📸 Adding profile pictures for ${studentsWithoutPhotos.length} students...`);
+      
+      const samplePhotos = [
+        'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face',
+        'https://images.unsplash.com/photo-1494790108755-2616b5b3c8b7?w=150&h=150&fit=crop&crop=face',
+        'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&h=150&fit=crop&crop=face',
+        'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&h=150&fit=crop&crop=face',
+        'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&h=150&fit=crop&crop=face',
+        'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&h=150&fit=crop&crop=face'
+      ];
+
+      studentsWithoutPhotos.forEach((student, index) => {
+        const photoUrl = samplePhotos[index % samplePhotos.length];
+        
+        // Check if profile exists
+        const existingProfile = db.prepare('SELECT id FROM student_profiles WHERE student_id = ?').get(student.id);
+        
+        if (existingProfile) {
+          // Update existing profile
+          db.prepare(`
+            UPDATE student_profiles 
+            SET profile_picture = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE student_id = ?
+          `).run(photoUrl, student.id);
+        } else {
+          // Create new profile
+          const profileId = require('uuid').v4();
+          db.prepare(`
+            INSERT INTO student_profiles (id, student_id, profile_picture, created_at, updated_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+          `).run(profileId, student.id, photoUrl);
+        }
+      });
+      
+      console.log('✅ Student profile pictures added');
+    }
+
     console.log('✅ Database schema initialized');
   } catch (error) {
     console.error('❌ Database initialization failed:', error);
@@ -1046,10 +1092,14 @@ app.get('/api/reports/attendance-detailed', authenticateToken, (req, res) => {
         a.*,
         s.name as student_name,
         s.roll_number,
-        c.name as class_name
+        c.name as class_name,
+        COALESCE(a.photo, sp.profile_picture, '') as student_photo,
+        sp.profile_picture as profile_photo,
+        a.photo as attendance_photo
       FROM attendance a
       JOIN students s ON a.student_id = s.id
       JOIN classes c ON a.class_id = c.id
+      LEFT JOIN student_profiles sp ON s.id = sp.student_id
       WHERE 1=1
     `;
     
@@ -1074,7 +1124,13 @@ app.get('/api/reports/attendance-detailed', authenticateToken, (req, res) => {
     
     const records = db.prepare(query).all(...params);
     
-    res.json(records);
+    res.json(records.map(record => ({
+      ...record,
+      // Ensure we have a photo field for the frontend - prioritize attendance photo over profile photo
+      photo: record.attendance_photo || record.profile_photo || '',
+      has_attendance_photo: !!record.attendance_photo,
+      has_profile_photo: !!record.profile_photo
+    })));
   } catch (error) {
     console.error('Error fetching detailed attendance reports:', error);
     res.status(500).json({ error: error.message });
