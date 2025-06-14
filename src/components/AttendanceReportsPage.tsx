@@ -208,14 +208,38 @@ export function AttendanceReportsPage() {
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please login again.');
+        }
+        if (response.status === 404) {
+          throw new Error('Attendance data not found.');
+        }
+        throw new Error(`Server error: ${response.status} ${response.statusText}`);
       }
 
       const data = await response.json();
-      setAttendanceRecords(data);
+      
+      // Validate and clean the data
+      const cleanedData = Array.isArray(data) ? data.map(record => ({
+        ...record,
+        date: record.date || new Date().toISOString().split('T')[0],
+        marked_at: record.marked_at || new Date().toISOString(),
+        student_name: record.student_name || 'Unknown Student',
+        teacher_name: record.teacher_name || 'Unknown Teacher',
+        class_name: record.class_name || 'Unknown Class',
+        class_section: record.class_section || 'Unknown Section'
+      })) : [];
+      
+      setAttendanceRecords(cleanedData);
+      
+      if (cleanedData.length === 0) {
+        toast.error('No attendance records found for the selected filters');
+      }
     } catch (error) {
       console.error('Error fetching attendance reports:', error);
-      toast.error('Failed to fetch attendance reports');
+      const errorMessage = error instanceof Error ? error.message : 'Failed to fetch attendance reports';
+      toast.error(errorMessage);
+      setAttendanceRecords([]);
     } finally {
       setLoading(false);
     }
@@ -275,21 +299,53 @@ export function AttendanceReportsPage() {
 
   // Photo thumbnail component
   const PhotoThumbnail = ({ photo, student }: { photo?: string; student: AttendanceRecord }) => {
-    if (!photo) return <span className="text-gray-400 text-sm">No photo</span>;
+    if (!photo) {
+      return (
+        <div className="flex items-center gap-2 text-gray-400">
+          <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
+            <Camera className="h-4 w-4" />
+          </div>
+          <span className="text-sm">No photo</span>
+        </div>
+      );
+    }
+
+    // Handle both base64 and URL photos
+    const isValidPhoto = photo.startsWith('data:image/') || photo.startsWith('http') || photo.startsWith('https://');
+    
+    if (!isValidPhoto) {
+      return (
+        <div className="flex items-center gap-2 text-gray-400">
+          <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center">
+            <span className="text-xs text-red-600">?</span>
+          </div>
+          <span className="text-sm">Invalid photo</span>
+        </div>
+      );
+    }
 
     return (
       <div className="flex items-center gap-2">
         <img
           src={photo}
           alt={`${student.student_name} attendance`}
-          className="w-8 h-8 rounded-full object-cover cursor-pointer hover:opacity-80 transition-opacity"
+          className="w-8 h-8 rounded-full object-cover cursor-pointer hover:opacity-80 transition-opacity border-2 border-green-200"
           onClick={() => {
             setSelectedPhoto(photo);
             setSelectedStudent(student);
             setIsPhotoDialogOpen(true);
           }}
+          onError={(e) => {
+            // Fallback for broken images
+            const target = e.target as HTMLImageElement;
+            target.style.display = 'none';
+            const fallback = document.createElement('div');
+            fallback.className = 'w-8 h-8 rounded-full bg-red-100 flex items-center justify-center';
+            fallback.innerHTML = '<span class="text-xs text-red-600">✗</span>';
+            target.parentElement?.insertBefore(fallback, target);
+          }}
         />
-        <Camera className="h-4 w-4 text-gray-500" />
+        <Camera className="h-4 w-4 text-green-600" />
       </div>
     );
   };
@@ -574,8 +630,10 @@ export function AttendanceReportsPage() {
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="flex justify-center py-8">
-              <div className="text-sm text-muted-foreground">Loading attendance records...</div>
+            <div className="flex flex-col items-center justify-center py-12">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-4"></div>
+              <div className="text-sm text-muted-foreground mb-2">Loading attendance records...</div>
+              <div className="text-xs text-muted-foreground">This may take a few moments</div>
             </div>
           ) : attendanceRecords.length === 0 ? (
             <div className="text-center py-8">
@@ -605,9 +663,33 @@ export function AttendanceReportsPage() {
                     <TableRow key={record.id}>
                       <TableCell>
                         <div>
-                          <div className="font-medium">{new Date(record.date).toLocaleDateString()}</div>
+                          <div className="font-medium">
+                            {(() => {
+                              try {
+                                const date = new Date(record.date);
+                                return isNaN(date.getTime()) ? 'Invalid Date' : date.toLocaleDateString('en-US', {
+                                  weekday: 'short',
+                                  year: 'numeric', 
+                                  month: 'short',
+                                  day: 'numeric'
+                                });
+                              } catch {
+                                return 'Invalid Date';
+                              }
+                            })()}
+                          </div>
                           <div className="text-sm text-muted-foreground">
-                            {new Date(record.marked_at).toLocaleTimeString()}
+                            {(() => {
+                              try {
+                                const date = new Date(record.marked_at);
+                                return isNaN(date.getTime()) ? 'Invalid Time' : date.toLocaleTimeString('en-US', {
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                });
+                              } catch {
+                                return 'Invalid Time';
+                              }
+                            })()}
                           </div>
                         </div>
                       </TableCell>
@@ -623,17 +705,26 @@ export function AttendanceReportsPage() {
                         <div>
                           <div className="font-medium flex items-center gap-1">
                             <GraduationCap className="h-3 w-3" />
-                            {record.class_name} - {record.class_section}
+                            {record.class_name || 'Unknown Class'} - {record.class_section || 'Unknown Section'}
                           </div>
-                          {record.topic_name && (
-                            <div className="text-sm text-muted-foreground flex items-center gap-1">
+                          {record.topic_name ? (
+                            <div className="text-sm text-green-600 flex items-center gap-1">
                               <BookOpen className="h-3 w-3" />
                               {record.topic_name}
                             </div>
+                          ) : (
+                            <div className="text-sm text-muted-foreground flex items-center gap-1">
+                              <BookOpen className="h-3 w-3" />
+                              General Attendance
+                            </div>
                           )}
-                          {record.subject_name && (
+                          {record.subject_name ? (
                             <div className="text-xs text-muted-foreground">
-                              {record.subject_name}
+                              Subject: {record.subject_name}
+                            </div>
+                          ) : (
+                            <div className="text-xs text-muted-foreground">
+                              No specific subject
                             </div>
                           )}
                         </div>
