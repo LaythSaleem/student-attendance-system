@@ -1227,6 +1227,239 @@ app.get('/api/users', authenticateToken, requireRole('admin'), (req, res) => {
   }
 });
 
+// Teacher dashboard endpoints
+app.get('/api/teachers/dashboard-stats', authenticateToken, requireRole('teacher'), (req, res) => {
+  try {
+    const teacherId = req.user.userId;
+    
+    // Get teacher's classes count
+    const classesCount = db.prepare(`
+      SELECT COUNT(*) as count FROM classes WHERE teacher_id = ?
+    `).get(teacherId)?.count || 0;
+    
+    // Get total students in teacher's classes
+    const studentsCount = db.prepare(`
+      SELECT COUNT(DISTINCT s.id) as count 
+      FROM students s
+      JOIN classes c ON s.class = c.name
+      WHERE c.teacher_id = ?
+    `).get(teacherId)?.count || 0;
+    
+    // Get topics assigned to teacher
+    const topicsCount = db.prepare(`
+      SELECT COUNT(*) as count FROM teacher_topic_assignments WHERE teacher_id = ?
+    `).get(teacherId)?.count || 0;
+    
+    // Get recent attendance rate
+    const attendanceRate = db.prepare(`
+      SELECT 
+        CASE 
+          WHEN COUNT(*) = 0 THEN 0
+          ELSE ROUND((COUNT(CASE WHEN status = 'present' THEN 1 END) * 100.0 / COUNT(*)), 1)
+        END as rate
+      FROM attendance a
+      JOIN classes c ON a.class_id = c.id
+      WHERE c.teacher_id = ? AND a.date >= date('now', '-7 days')
+    `).get(teacherId)?.rate || 0;
+    
+    res.json({
+      classesCount,
+      studentsCount,
+      topicsCount,
+      attendanceRate: parseFloat(attendanceRate)
+    });
+  } catch (error) {
+    console.error('Error fetching teacher dashboard stats:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/teachers/recent-activity', authenticateToken, requireRole('teacher'), (req, res) => {
+  try {
+    const teacherId = req.user.userId;
+    
+    // Get recent attendance activities
+    const activities = db.prepare(`
+      SELECT 
+        'attendance' as type,
+        a.date,
+        s.name as student_name,
+        c.name as class_name,
+        a.status,
+        a.created_at
+      FROM attendance a
+      JOIN students s ON a.student_id = s.id
+      JOIN classes c ON a.class_id = c.id
+      WHERE c.teacher_id = ? AND a.date >= date('now', '-7 days')
+      ORDER BY a.created_at DESC
+      LIMIT 10
+    `).all(teacherId);
+    
+    res.json(activities);
+  } catch (error) {
+    console.error('Error fetching recent activity:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/teachers/my-topics', authenticateToken, requireRole('teacher'), (req, res) => {
+  try {
+    const teacherId = req.user.userId;
+    
+    const topics = db.prepare(`
+      SELECT 
+        t.id,
+        t.title,
+        t.description,
+        t.stage,
+        s.name as stage_name,
+        COUNT(DISTINCT c.id) as classes_count
+      FROM topics t
+      JOIN teacher_topic_assignments tta ON t.id = tta.topic_id
+      JOIN stages s ON t.stage = s.id
+      LEFT JOIN classes c ON s.id = c.stage_id AND c.teacher_id = ?
+      WHERE tta.teacher_id = ?
+      GROUP BY t.id, t.title, t.description, t.stage, s.name
+      ORDER BY s.name, t.title
+    `).all(teacherId, teacherId);
+    
+    res.json(topics);
+  } catch (error) {
+    console.error('Error fetching teacher topics:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/teachers/students-requiring-attention', authenticateToken, requireRole('teacher'), (req, res) => {
+  try {
+    const teacherId = req.user.userId;
+    
+    // Get students with low attendance or recent absences
+    const students = db.prepare(`
+      SELECT 
+        s.id,
+        s.name,
+        s.roll_number,
+        c.name as class_name,
+        COUNT(CASE WHEN a.status = 'present' THEN 1 END) as present_count,
+        COUNT(a.id) as total_attendance,
+        CASE 
+          WHEN COUNT(a.id) = 0 THEN 0
+          ELSE ROUND((COUNT(CASE WHEN a.status = 'present' THEN 1 END) * 100.0 / COUNT(a.id)), 1)
+        END as attendance_rate,
+        MAX(CASE WHEN a.status = 'absent' THEN a.date END) as last_absent_date
+      FROM students s
+      JOIN classes c ON s.class = c.name
+      LEFT JOIN attendance a ON s.id = a.student_id AND a.date >= date('now', '-30 days')
+      WHERE c.teacher_id = ?
+      GROUP BY s.id, s.name, s.roll_number, c.name
+      HAVING attendance_rate < 80 OR last_absent_date >= date('now', '-3 days')
+      ORDER BY attendance_rate ASC, last_absent_date DESC
+      LIMIT 10
+    `).all(teacherId);
+    
+    res.json(students);
+  } catch (error) {
+    console.error('Error fetching students requiring attention:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/teachers/upcoming-exams', authenticateToken, requireRole('teacher'), (req, res) => {
+  try {
+    const teacherId = req.user.userId;
+    
+    const exams = db.prepare(`
+      SELECT 
+        e.id,
+        e.title,
+        e.description,
+        e.exam_date,
+        e.exam_time,
+        e.duration_minutes,
+        e.total_marks,
+        c.name as class_name,
+        et.name as exam_type
+      FROM exams e
+      JOIN classes c ON e.class_id = c.id
+      LEFT JOIN exam_types et ON e.exam_type_id = et.id
+      WHERE e.created_by = ? AND e.exam_date >= date('now')
+      ORDER BY e.exam_date ASC, e.exam_time ASC
+      LIMIT 10
+    `).all(teacherId);
+    
+    res.json(exams);
+  } catch (error) {
+    console.error('Error fetching upcoming exams:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/teachers/my-classes', authenticateToken, requireRole('teacher'), (req, res) => {
+  try {
+    const teacherId = req.user.userId;
+    
+    const classes = db.prepare(`
+      SELECT 
+        c.id,
+        c.name,
+        c.academic_year,
+        COUNT(DISTINCT s.id) as student_count,
+        COUNT(DISTINCT tta.topic_id) as topics_count,
+        AVG(CASE 
+          WHEN a.status = 'present' THEN 100.0
+          WHEN a.status = 'absent' THEN 0.0
+          ELSE NULL
+        END) as avg_attendance_rate
+      FROM classes c
+      LEFT JOIN students s ON s.class = c.name
+      LEFT JOIN teacher_topic_assignments tta ON tta.teacher_id = ? AND tta.topic_id IN (
+        SELECT t.id FROM topics t 
+        JOIN stages st ON t.stage = st.id 
+        WHERE st.name = c.name OR st.name LIKE '%' || c.name || '%'
+      )
+      LEFT JOIN attendance a ON a.class_id = c.id AND a.date >= date('now', '-7 days')
+      WHERE c.teacher_id = ?
+      GROUP BY c.id, c.name, c.academic_year
+      ORDER BY c.name
+    `).all(teacherId, teacherId);
+    
+    res.json(classes.map(cls => ({
+      ...cls,
+      avg_attendance_rate: cls.avg_attendance_rate ? parseFloat(cls.avg_attendance_rate.toFixed(1)) : 0
+    })));
+  } catch (error) {
+    console.error('Error fetching teacher classes:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/teachers/weekly-attendance', authenticateToken, requireRole('teacher'), (req, res) => {
+  try {
+    const teacherId = req.user.userId;
+    
+    // Get weekly attendance data for the last 7 days
+    const weeklyData = db.prepare(`
+      SELECT 
+        a.date,
+        COUNT(CASE WHEN a.status = 'present' THEN 1 END) as present_count,
+        COUNT(CASE WHEN a.status = 'absent' THEN 1 END) as absent_count,
+        COUNT(CASE WHEN a.status = 'late' THEN 1 END) as late_count,
+        COUNT(a.id) as total_count
+      FROM attendance a
+      JOIN classes c ON a.class_id = c.id
+      WHERE c.teacher_id = ? AND a.date >= date('now', '-7 days')
+      GROUP BY a.date
+      ORDER BY a.date DESC
+    `).all(teacherId);
+    
+    res.json(weeklyData);
+  } catch (error) {
+    console.error('Error fetching weekly attendance:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Catch-all handler: send back index.html for any non-API routes
 app.get('*', (req, res) => {
   if (!req.path.startsWith('/api') && !req.path.startsWith('/health')) {
