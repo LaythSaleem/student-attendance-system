@@ -1230,19 +1230,33 @@ app.get('/api/users', authenticateToken, requireRole('admin'), (req, res) => {
 // Teacher dashboard endpoints
 app.get('/api/teachers/dashboard-stats', authenticateToken, requireRole('teacher'), (req, res) => {
   try {
-    const teacherId = req.user.userId;
+    const userId = req.user.userId;
     
-    // Get teacher's classes count
+    // Get teacher ID from user ID
+    const teacher = db.prepare('SELECT id FROM teachers WHERE user_id = ?').get(userId);
+    if (!teacher) {
+      return res.status(404).json({ error: 'Teacher profile not found' });
+    }
+    const teacherId = teacher.id;
+    
+    // Get teacher's classes count through topic assignments
     const classesCount = db.prepare(`
-      SELECT COUNT(*) as count FROM classes WHERE teacher_id = ?
+      SELECT COUNT(DISTINCT t.class_id) as count 
+      FROM teacher_topic_assignments tta
+      JOIN topics t ON tta.topic_id = t.id
+      WHERE tta.teacher_id = ?
     `).get(teacherId)?.count || 0;
     
     // Get total students in teacher's classes
     const studentsCount = db.prepare(`
       SELECT COUNT(DISTINCT s.id) as count 
       FROM students s
-      JOIN classes c ON s.class = c.name
-      WHERE c.teacher_id = ?
+      JOIN teacher_topic_assignments tta ON s.class = (
+        SELECT c.name FROM classes c 
+        JOIN topics t ON c.id = t.class_id 
+        WHERE t.id = tta.topic_id
+      )
+      WHERE tta.teacher_id = ?
     `).get(teacherId)?.count || 0;
     
     // Get topics assigned to teacher
@@ -1258,8 +1272,9 @@ app.get('/api/teachers/dashboard-stats', authenticateToken, requireRole('teacher
           ELSE ROUND((COUNT(CASE WHEN status = 'present' THEN 1 END) * 100.0 / COUNT(*)), 1)
         END as rate
       FROM attendance a
-      JOIN classes c ON a.class_id = c.id
-      WHERE c.teacher_id = ? AND a.date >= date('now', '-7 days')
+      JOIN topics t ON a.topic_id = t.id
+      JOIN teacher_topic_assignments tta ON t.id = tta.topic_id
+      WHERE tta.teacher_id = ? AND a.date >= date('now', '-7 days')
     `).get(teacherId)?.rate || 0;
     
     res.json({
@@ -1338,9 +1353,16 @@ app.get('/api/teachers/my-topics', authenticateToken, requireRole('teacher'), (r
 
 app.get('/api/teachers/students-requiring-attention', authenticateToken, requireRole('teacher'), (req, res) => {
   try {
-    const teacherId = req.user.userId;
+    const userId = req.user.userId;
     
-    // Get students with low attendance or recent absences
+    // Get teacher ID from user ID
+    const teacher = db.prepare('SELECT id FROM teachers WHERE user_id = ?').get(userId);
+    if (!teacher) {
+      return res.status(404).json({ error: 'Teacher profile not found' });
+    }
+    const teacherId = teacher.id;
+    
+    // Get students with low attendance or recent absences through topics
     const students = db.prepare(`
       SELECT 
         s.id,
@@ -1357,7 +1379,9 @@ app.get('/api/teachers/students-requiring-attention', authenticateToken, require
       FROM students s
       JOIN classes c ON s.class = c.name
       LEFT JOIN attendance a ON s.id = a.student_id AND a.date >= date('now', '-30 days')
-      WHERE c.teacher_id = ?
+      LEFT JOIN topics t ON a.topic_id = t.id
+      LEFT JOIN teacher_topic_assignments tta ON t.id = tta.topic_id
+      WHERE tta.teacher_id = ?
       GROUP BY s.id, s.name, s.roll_number, c.name
       HAVING attendance_rate < 80 OR last_absent_date >= date('now', '-3 days')
       ORDER BY attendance_rate ASC, last_absent_date DESC
@@ -1526,7 +1550,14 @@ app.get('/api/teachers/classes/:classId/students', authenticateToken, requireRol
 
 app.get('/api/teachers/upcoming-exams', authenticateToken, requireRole('teacher'), (req, res) => {
   try {
-    const teacherId = req.user.userId;
+    const userId = req.user.userId;
+    
+    // Get teacher ID from user ID
+    const teacher = db.prepare('SELECT id FROM teachers WHERE user_id = ?').get(userId);
+    if (!teacher) {
+      return res.status(404).json({ error: 'Teacher profile not found' });
+    }
+    const teacherId = teacher.id;
     
     const exams = db.prepare(`
       SELECT 
@@ -1600,7 +1631,14 @@ app.get('/api/teachers/my-classes', authenticateToken, requireRole('teacher'), (
 
 app.get('/api/teachers/weekly-attendance', authenticateToken, requireRole('teacher'), (req, res) => {
   try {
-    const teacherId = req.user.userId;
+    const userId = req.user.userId;
+    
+    // Get teacher ID from user ID
+    const teacher = db.prepare('SELECT id FROM teachers WHERE user_id = ?').get(userId);
+    if (!teacher) {
+      return res.status(404).json({ error: 'Teacher profile not found' });
+    }
+    const teacherId = teacher.id;
     
     // Get weekly attendance data for the last 7 days
     const weeklyData = db.prepare(`
@@ -1609,10 +1647,12 @@ app.get('/api/teachers/weekly-attendance', authenticateToken, requireRole('teach
         COUNT(CASE WHEN a.status = 'present' THEN 1 END) as present_count,
         COUNT(CASE WHEN a.status = 'absent' THEN 1 END) as absent_count,
         COUNT(CASE WHEN a.status = 'late' THEN 1 END) as late_count,
-        COUNT(a.id) as total_count
+        COUNT(a.id) as total_count,
+        ROUND((COUNT(CASE WHEN a.status = 'present' THEN 1 END) * 100.0 / COUNT(a.id)), 1) as attendance_rate
       FROM attendance a
-      JOIN classes c ON a.class_id = c.id
-      WHERE c.teacher_id = ? AND a.date >= date('now', '-7 days')
+      JOIN topics t ON a.topic_id = t.id
+      JOIN teacher_topic_assignments tta ON t.id = tta.topic_id
+      WHERE tta.teacher_id = ? AND a.date >= date('now', '-7 days')
       GROUP BY a.date
       ORDER BY a.date DESC
     `).all(teacherId);
