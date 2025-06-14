@@ -638,15 +638,14 @@ app.get('/api/teachers/dropdown', authenticateToken, (req, res) => {
 app.get('/api/academic-years/dropdown', authenticateToken, (req, res) => {
   try {
     const academicYears = db.prepare(`
-      SELECT DISTINCT academic_year 
-      FROM classes 
-      WHERE academic_year IS NOT NULL 
-      ORDER BY academic_year DESC
+      SELECT id, name 
+      FROM academic_years 
+      ORDER BY name DESC
     `).all();
     
     res.json(academicYears.map(ay => ({
-      id: ay.academic_year,
-      name: ay.academic_year
+      id: ay.id,
+      name: ay.name
     })));
   } catch (error) {
     console.error('Error fetching academic years dropdown:', error);
@@ -678,21 +677,42 @@ app.get('/api/teachers/available-topics', authenticateToken, (req, res) => {
   }
 });
 
+// Topics endpoint (alternative path)
+app.get('/api/teachers/topics', authenticateToken, (req, res) => {
+  try {
+    // Return same topics as available-topics
+    const topics = [
+      { id: 1, name: 'Mathematics', stage: 'Primary' },
+      { id: 2, name: 'English', stage: 'Primary' },
+      { id: 3, name: 'Science', stage: 'Primary' },
+      { id: 4, name: 'History', stage: 'Secondary' },
+      { id: 5, name: 'Physics', stage: 'Secondary' },
+      { id: 6, name: 'Chemistry', stage: 'Secondary' },
+      { id: 7, name: 'Biology', stage: 'Secondary' },
+      { id: 8, name: 'Geography', stage: 'Secondary' },
+      { id: 9, name: 'Art', stage: 'All' },
+      { id: 10, name: 'Physical Education', stage: 'All' }
+    ];
+    
+    res.json(topics);
+  } catch (error) {
+    console.error('Error fetching topics:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Exams endpoint
 app.get('/api/exams', authenticateToken, (req, res) => {
   try {
     const exams = db.prepare(`
-      SELECT e.*, c.name as class_name, t.first_name, t.last_name
+      SELECT e.*, c.name as class_name, t.name as teacher_name
       FROM exams e
       LEFT JOIN classes c ON e.class_id = c.id
       LEFT JOIN teachers t ON e.teacher_id = t.id
       ORDER BY e.exam_date DESC
     `).all();
     
-    res.json(exams.map(exam => ({
-      ...exam,
-      teacher_name: exam.first_name && exam.last_name ? `${exam.first_name} ${exam.last_name}` : null
-    })));
+    res.json(exams);
   } catch (error) {
     console.error('Error fetching exams:', error);
     res.status(500).json({ error: error.message });
