@@ -1269,7 +1269,7 @@ app.get('/api/teachers/dashboard-stats', authenticateToken, requireRole('teacher
       SELECT 
         CASE 
           WHEN COUNT(*) = 0 THEN 0
-          ELSE ROUND((COUNT(CASE WHEN status = 'present' THEN 1 END) * 100.0 / COUNT(*)), 1)
+          ELSE ROUND((COUNT(CASE WHEN a.status = 'present' THEN 1 END) * 100.0 / COUNT(*)), 1)
         END as rate
       FROM attendance a
       JOIN topics t ON a.topic_id = t.id
