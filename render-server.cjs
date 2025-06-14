@@ -1472,8 +1472,9 @@ app.get('/api/teachers/my-classes', authenticateToken, requireRole('teacher'), (
       return res.status(404).json({ error: 'Teacher profile not found' });
     }
     
+    // Get classes through topic assignments
     const classes = db.prepare(`
-      SELECT 
+      SELECT DISTINCT
         c.id,
         c.name,
         c.section,
@@ -1486,15 +1487,14 @@ app.get('/api/teachers/my-classes', authenticateToken, requireRole('teacher'), (
           ELSE NULL
         END) as avg_attendance_rate
       FROM classes c
-      LEFT JOIN teacher_stage_assignments tsa ON c.id = tsa.class_id AND tsa.teacher_id = ?
+      JOIN topics t ON c.id = t.class_id
+      JOIN teacher_topic_assignments tta ON t.id = tta.topic_id
       LEFT JOIN student_enrollments se ON c.id = se.class_id
-      LEFT JOIN teacher_topic_assignments tta ON tta.teacher_id = ? AND tta.status = 'active'
-      LEFT JOIN topics t ON tta.topic_id = t.id AND t.class_id = c.id
       LEFT JOIN attendance a ON a.class_id = c.id AND a.date >= date('now', '-7 days')
-      WHERE tsa.teacher_id = ? AND tsa.status = 'active'
+      WHERE tta.teacher_id = ? AND tta.status = 'active'
       GROUP BY c.id, c.name, c.section, c.description
       ORDER BY c.name
-    `).all(teacher.id, teacher.id, teacher.id);
+    `).all(teacher.id);
     
     res.json(classes.map(cls => ({
       ...cls,
