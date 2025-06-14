@@ -503,7 +503,42 @@ app.get('/api/classes', authenticateToken, (req, res) => {
       GROUP BY c.id
     `).all();
     
-    res.json(classes);
+    // Add sample topics data to each class
+    const classesWithTopics = classes.map(cls => ({
+      ...cls,
+      total_topics: 3, // Sample count
+      topics: [
+        {
+          id: `${cls.id}-topic-1`,
+          class_id: cls.id,
+          title: 'Introduction to Medicine',
+          description: 'Basic medical concepts and terminology',
+          status: 'completed',
+          order_index: 1,
+          created_at: new Date().toISOString()
+        },
+        {
+          id: `${cls.id}-topic-2`,
+          class_id: cls.id,
+          title: 'Anatomy Basics',
+          description: 'Human body structure and systems',
+          status: 'in_progress',
+          order_index: 2,
+          created_at: new Date().toISOString()
+        },
+        {
+          id: `${cls.id}-topic-3`,
+          class_id: cls.id,
+          title: 'Physiology Overview',
+          description: 'How body systems function',
+          status: 'planned',
+          order_index: 3,
+          created_at: new Date().toISOString()
+        }
+      ]
+    }));
+    
+    res.json(classesWithTopics);
   } catch (error) {
     console.error('Error fetching classes:', error);
     res.status(500).json({ error: error.message });
@@ -784,6 +819,122 @@ app.get('/api/reports/attendance-detailed', authenticateToken, (req, res) => {
     res.json(records);
   } catch (error) {
     console.error('Error fetching detailed attendance reports:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Topics endpoints
+// Get topics for a specific class
+app.get('/api/classes/:classId/topics', authenticateToken, (req, res) => {
+  try {
+    const { classId } = req.params;
+    
+    // For now, return sample topics since we don't have a topics table
+    const sampleTopics = [
+      {
+        id: '1',
+        class_id: classId,
+        title: 'Introduction to Medicine',
+        description: 'Basic medical concepts and terminology',
+        status: 'completed',
+        order_index: 1,
+        created_at: new Date().toISOString()
+      },
+      {
+        id: '2',
+        class_id: classId,
+        title: 'Anatomy Basics',
+        description: 'Human body structure and systems',
+        status: 'in_progress',
+        order_index: 2,
+        created_at: new Date().toISOString()
+      },
+      {
+        id: '3',
+        class_id: classId,
+        title: 'Physiology Overview',
+        description: 'How body systems function',
+        status: 'planned',
+        order_index: 3,
+        created_at: new Date().toISOString()
+      }
+    ];
+    
+    res.json(sampleTopics);
+  } catch (error) {
+    console.error('Error fetching topics:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get/Update/Delete specific topic
+app.get('/api/topics/:id', authenticateToken, (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Return sample topic data
+    const sampleTopic = {
+      id: id,
+      class_id: 'sample-class-id',
+      title: 'Sample Topic',
+      description: 'Sample topic description',
+      status: 'planned',
+      order_index: 1,
+      created_at: new Date().toISOString()
+    };
+    
+    res.json(sampleTopic);
+  } catch (error) {
+    console.error('Error fetching topic:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/topics/:id', authenticateToken, (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, description, status } = req.body;
+    
+    // Return updated topic data
+    const updatedTopic = {
+      id: id,
+      title: title || 'Updated Topic',
+      description: description || 'Updated description',
+      status: status || 'planned',
+      updated_at: new Date().toISOString()
+    };
+    
+    res.json(updatedTopic);
+  } catch (error) {
+    console.error('Error updating topic:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/topics/:id', authenticateToken, (req, res) => {
+  try {
+    const { id } = req.params;
+    res.json({ message: 'Topic deleted successfully', id });
+  } catch (error) {
+    console.error('Error deleting topic:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Reorder topics
+app.put('/api/classes/:classId/topics/reorder', authenticateToken, (req, res) => {
+  try {
+    const { classId } = req.params;
+    const { topics } = req.body;
+    
+    // Return success response
+    res.json({ 
+      message: 'Topics reordered successfully',
+      classId,
+      topics 
+    });
+  } catch (error) {
+    console.error('Error reordering topics:', error);
     res.status(500).json({ error: error.message });
   }
 });
