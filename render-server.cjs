@@ -705,11 +705,16 @@ app.get('/api/teachers/topics', authenticateToken, (req, res) => {
 app.get('/api/exams', authenticateToken, (req, res) => {
   try {
     const exams = db.prepare(`
-      SELECT e.*, c.name as class_name, t.name as teacher_name
+      SELECT 
+        e.*,
+        c.name as class_name,
+        t.name as teacher_name,
+        et.name as exam_type_name
       FROM exams e
       LEFT JOIN classes c ON e.class_id = c.id
-      LEFT JOIN teachers t ON e.teacher_id = t.id
-      ORDER BY e.exam_date DESC
+      LEFT JOIN teachers t ON e.created_by = t.user_id
+      LEFT JOIN exam_types et ON e.exam_type_id = et.id
+      ORDER BY e.date DESC
     `).all();
     
     res.json(exams);
