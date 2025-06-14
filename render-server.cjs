@@ -1432,6 +1432,98 @@ app.get('/api/teachers/students-with-attendance', authenticateToken, requireRole
   }
 });
 
+// Get students for a specific class (for daily attendance)
+app.get('/api/teachers/classes/:classId/students', authenticateToken, requireRole('teacher'), (req, res) => {
+  try {
+    const teacherId = req.user.userId;
+    const { classId } = req.params;
+    
+    // Get teacher record
+    const teacher = db.prepare('SELECT id FROM teachers WHERE user_id = ?').get(teacherId);
+    if (!teacher) {
+      return res.status(404).json({ error: 'Teacher profile not found' });
+    }
+    
+    // Verify teacher has access to this class (through topic assignments)
+    const hasAccess = db.prepare(`
+      SELECT COUNT(*) as count
+      FROM teacher_topic_assignments tta
+      JOIN topics t ON tta.topic_id = t.id
+      WHERE tta.teacher_id = ? AND t.class_id = ?
+    `).get(teacher.id, classId);
+    
+    if (hasAccess.count === 0) {
+      return res.status(403).json({ error: 'Access denied to this class' });
+    }
+    
+    // Get students enrolled in the class with attendance data
+    const students = db.prepare(`
+      SELECT DISTINCT
+        s.id,
+        s.name,
+        s.roll_number as rollNumber,
+        sp.profile_picture as latest_photo,
+        se.enrollment_date,
+        c.name as stage,
+        c.section,
+        -- Calculate attendance stats
+        COALESCE(
+          (SELECT COUNT(*) 
+           FROM attendance a 
+           WHERE a.student_id = s.id AND a.class_id = ? AND a.status = 'present'), 0
+        ) as present_count,
+        COALESCE(
+          (SELECT COUNT(*) 
+           FROM attendance a 
+           WHERE a.student_id = s.id AND a.class_id = ? AND a.status = 'late'), 0
+        ) as late_count,
+        COALESCE(
+          (SELECT COUNT(*) 
+           FROM attendance a 
+           WHERE a.student_id = s.id AND a.class_id = ?), 0
+        ) as total_sessions,
+        -- Today's attendance status
+        COALESCE(
+          (SELECT a.status 
+           FROM attendance a 
+           WHERE a.student_id = s.id AND a.class_id = ? AND DATE(a.date) = DATE('now')
+           LIMIT 1), 'not_marked'
+        ) as today_status
+      FROM students s
+      JOIN student_enrollments se ON s.id = se.student_id
+      JOIN classes c ON se.class_id = c.id
+      LEFT JOIN student_profiles sp ON s.user_id = sp.user_id
+      WHERE se.class_id = ?
+      ORDER BY s.roll_number, s.name
+    `).all(classId, classId, classId, classId, classId);
+    
+    // Calculate attendance rate and status for each student
+    const studentsWithStats = students.map(student => {
+      const attendance_rate = student.total_sessions > 0 
+        ? Math.round((student.present_count / student.total_sessions) * 100)
+        : 0;
+      
+      let status = 'No Data';
+      if (student.total_sessions > 0) {
+        if (attendance_rate >= 90) status = 'Good';
+        else if (attendance_rate >= 75) status = 'Average';
+        else status = 'Poor';
+      }
+      
+      return {
+        ...student,
+        attendance_rate,
+        status
+      };
+    });
+    
+    res.json(studentsWithStats);
+  } catch (error) {
+    console.error('Error fetching class students:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.get('/api/teachers/upcoming-exams', authenticateToken, requireRole('teacher'), (req, res) => {
   try {
     const teacherId = req.user.userId;
