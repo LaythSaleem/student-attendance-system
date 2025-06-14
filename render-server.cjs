@@ -1306,22 +1306,28 @@ app.get('/api/teachers/my-topics', authenticateToken, requireRole('teacher'), (r
   try {
     const teacherId = req.user.userId;
     
+    // Get teacher record
+    const teacher = db.prepare('SELECT id FROM teachers WHERE user_id = ?').get(teacherId);
+    if (!teacher) {
+      return res.status(404).json({ error: 'Teacher profile not found' });
+    }
+    
     const topics = db.prepare(`
       SELECT 
         t.id,
-        t.title,
+        t.name as title,
         t.description,
-        t.stage,
-        s.name as stage_name,
-        COUNT(DISTINCT c.id) as classes_count
+        t.class_id,
+        c.name as class_name,
+        c.section,
+        t.status,
+        t.order_index
       FROM topics t
       JOIN teacher_topic_assignments tta ON t.id = tta.topic_id
-      JOIN stages s ON t.stage = s.id
-      LEFT JOIN classes c ON s.id = c.stage_id AND c.teacher_id = ?
-      WHERE tta.teacher_id = ?
-      GROUP BY t.id, t.title, t.description, t.stage, s.name
-      ORDER BY s.name, t.title
-    `).all(teacherId, teacherId);
+      JOIN classes c ON t.class_id = c.id
+      WHERE tta.teacher_id = ? AND tta.status = 'active'
+      ORDER BY c.name, t.order_index, t.name
+    `).all(teacher.id);
     
     res.json(topics);
   } catch (error) {
@@ -1399,12 +1405,19 @@ app.get('/api/teachers/my-classes', authenticateToken, requireRole('teacher'), (
   try {
     const teacherId = req.user.userId;
     
+    // Get teacher record
+    const teacher = db.prepare('SELECT id FROM teachers WHERE user_id = ?').get(teacherId);
+    if (!teacher) {
+      return res.status(404).json({ error: 'Teacher profile not found' });
+    }
+    
     const classes = db.prepare(`
       SELECT 
         c.id,
         c.name,
-        c.academic_year,
-        COUNT(DISTINCT s.id) as student_count,
+        c.section,
+        c.description,
+        COUNT(DISTINCT se.student_id) as student_count,
         COUNT(DISTINCT tta.topic_id) as topics_count,
         AVG(CASE 
           WHEN a.status = 'present' THEN 100.0
@@ -1412,17 +1425,15 @@ app.get('/api/teachers/my-classes', authenticateToken, requireRole('teacher'), (
           ELSE NULL
         END) as avg_attendance_rate
       FROM classes c
-      LEFT JOIN students s ON s.class = c.name
-      LEFT JOIN teacher_topic_assignments tta ON tta.teacher_id = ? AND tta.topic_id IN (
-        SELECT t.id FROM topics t 
-        JOIN stages st ON t.stage = st.id 
-        WHERE st.name = c.name OR st.name LIKE '%' || c.name || '%'
-      )
+      LEFT JOIN teacher_stage_assignments tsa ON c.id = tsa.class_id AND tsa.teacher_id = ?
+      LEFT JOIN student_enrollments se ON c.id = se.class_id
+      LEFT JOIN teacher_topic_assignments tta ON tta.teacher_id = ? AND tta.status = 'active'
+      LEFT JOIN topics t ON tta.topic_id = t.id AND t.class_id = c.id
       LEFT JOIN attendance a ON a.class_id = c.id AND a.date >= date('now', '-7 days')
-      WHERE c.teacher_id = ?
-      GROUP BY c.id, c.name, c.academic_year
+      WHERE tsa.teacher_id = ? AND tsa.status = 'active'
+      GROUP BY c.id, c.name, c.section, c.description
       ORDER BY c.name
-    `).all(teacherId, teacherId);
+    `).all(teacher.id, teacher.id, teacher.id);
     
     res.json(classes.map(cls => ({
       ...cls,
