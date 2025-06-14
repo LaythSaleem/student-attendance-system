@@ -1680,6 +1680,111 @@ app.get('/api/teachers/attendance-reports', authenticateToken, requireRole('teac
   }
 });
 
+// Get attendance records for a specific class and date
+app.get('/api/teachers/attendance-records', authenticateToken, requireRole('teacher'), (req, res) => {
+  try {
+    const { classId, date, topicId } = req.query;
+    
+    if (!classId || !date) {
+      return res.status(400).json({ error: 'Class ID and date are required' });
+    }
+    
+    const records = db.prepare(`
+      SELECT 
+        a.id,
+        a.student_id,
+        a.status,
+        a.notes,
+        s.name as student_name,
+        s.roll_number,
+        sp.profile_picture
+      FROM attendance a
+      JOIN students s ON a.student_id = s.id
+      LEFT JOIN student_profiles sp ON s.id = sp.student_id
+      WHERE a.class_id = ? AND a.date = ?
+      ORDER BY s.roll_number, s.name
+    `).all(classId, date);
+    
+    res.json(records);
+  } catch (error) {
+    console.error('Error fetching attendance records:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Submit attendance records
+app.post('/api/teachers/attendance-records', authenticateToken, requireRole('teacher'), (req, res) => {
+  try {
+    const { classId, date, topicId, records } = req.body;
+    
+    if (!classId || !date || !records || !Array.isArray(records)) {
+      return res.status(400).json({ error: 'Invalid attendance data' });
+    }
+    
+    // Begin transaction
+    const insertOrUpdate = db.prepare(`
+      INSERT OR REPLACE INTO attendance (id, student_id, class_id, date, status, notes, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    `);
+    
+    const transaction = db.transaction((records) => {
+      for (const record of records) {
+        const attendanceId = uuidv4();
+        insertOrUpdate.run(
+          attendanceId,
+          record.student_id,
+          classId,
+          date,
+          record.status,
+          record.notes || null
+        );
+      }
+    });
+    
+    transaction(records);
+    
+    res.json({ 
+      success: true, 
+      message: `Attendance submitted for ${records.length} students`,
+      recordsCount: records.length 
+    });
+  } catch (error) {
+    console.error('Error submitting attendance:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Photo-based attendance endpoint
+app.post('/api/teachers/photo-attendance', authenticateToken, requireRole('teacher'), upload.single('photo'), (req, res) => {
+  try {
+    const { classId, studentId, date, status } = req.body;
+    const photo = req.file;
+    
+    if (!classId || !studentId || !date || !status) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    
+    // For now, just mark attendance without processing the photo
+    // In a real implementation, you'd use face recognition here
+    const attendanceId = uuidv4();
+    
+    db.prepare(`
+      INSERT OR REPLACE INTO attendance (id, student_id, class_id, date, status, notes, created_at)
+      VALUES (?, ?, ?, ?, ?, 'Submitted via photo', CURRENT_TIMESTAMP)
+    `).run(attendanceId, studentId, classId, date, status);
+    
+    res.json({ 
+      success: true, 
+      message: 'Photo attendance recorded',
+      photoProcessed: photo ? true : false,
+      attendanceId 
+    });
+  } catch (error) {
+    console.error('Error processing photo attendance:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Catch-all handler: send back index.html for any non-API routes
 app.get('*', (req, res) => {
   if (!req.path.startsWith('/api') && !req.path.startsWith('/health')) {
