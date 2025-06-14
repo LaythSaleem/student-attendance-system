@@ -1375,6 +1375,7 @@ app.get('/api/teachers/students-requiring-attention', authenticateToken, require
 app.get('/api/teachers/students-with-attendance', authenticateToken, requireRole('teacher'), (req, res) => {
   try {
     const teacherId = req.user.userId;
+    const { stage } = req.query;
     
     // Get teacher record
     const teacher = db.prepare('SELECT id FROM teachers WHERE user_id = ?').get(teacherId);
@@ -1382,27 +1383,47 @@ app.get('/api/teachers/students-with-attendance', authenticateToken, requireRole
       return res.status(404).json({ error: 'Teacher profile not found' });
     }
 
+    let whereClause = 'WHERE c.teacher_id = ?';
+    let params = [teacher.id];
+    
+    if (stage && stage !== 'all') {
+      whereClause += ' AND c.name = ?';
+      params.push(stage);
+    }
+
     const students = db.prepare(`
       SELECT 
         s.id,
         s.name,
         s.roll_number,
+        c.name as stage,
+        c.section as section,
         c.name as class_name,
         COUNT(CASE WHEN a.status = 'present' THEN 1 END) as present_count,
+        COUNT(CASE WHEN a.status = 'late' THEN 1 END) as late_count,
         COUNT(CASE WHEN a.status = 'absent' THEN 1 END) as absent_count,
-        COUNT(a.id) as total_attendance,
+        COUNT(a.id) as total_sessions,
         ROUND(
           CAST(COUNT(CASE WHEN a.status = 'present' THEN 1 END) AS FLOAT) * 100 / 
           NULLIF(COUNT(a.id), 0), 2
-        ) as attendance_percentage
+        ) as attendance_rate,
+        sp.profile_picture as latest_photo,
+        se.enrollment_date as enrollment_date,
+        CASE 
+          WHEN COUNT(a.id) = 0 THEN 'No Data'
+          WHEN CAST(COUNT(CASE WHEN a.status = 'present' THEN 1 END) AS FLOAT) * 100 / COUNT(a.id) >= 85 THEN 'Good'
+          WHEN CAST(COUNT(CASE WHEN a.status = 'present' THEN 1 END) AS FLOAT) * 100 / COUNT(a.id) >= 70 THEN 'Average'
+          ELSE 'Poor'
+        END as status
       FROM students s
       JOIN student_enrollments se ON s.id = se.student_id
       JOIN classes c ON se.class_id = c.id
+      LEFT JOIN student_profiles sp ON s.id = sp.student_id
       LEFT JOIN attendance a ON s.id = a.student_id AND a.class_id = c.id
-      WHERE c.teacher_id = ?
-      GROUP BY s.id, s.name, s.roll_number, c.name
+      ${whereClause}
+      GROUP BY s.id, s.name, s.roll_number, c.name, c.section, sp.profile_picture, se.enrollment_date
       ORDER BY s.name ASC
-    `).all(teacher.id);
+    `).all(...params);
 
     res.json(students);
   } catch (error) {
@@ -1511,12 +1532,18 @@ app.get('/api/teachers/weekly-attendance', authenticateToken, requireRole('teach
   }
 });
 
-// Teacher attendance reports endpoint
+// Teachers attendance reports endpoint
 app.get('/api/teachers/attendance-reports', authenticateToken, requireRole('teacher'), (req, res) => {
   try {
-    const { classId, date } = req.query;
     const teacherId = req.user.userId;
+    const { class_id, date_from, date_to } = req.query;
     
+    // Get teacher record
+    const teacher = db.prepare('SELECT id FROM teachers WHERE user_id = ?').get(teacherId);
+    if (!teacher) {
+      return res.status(404).json({ error: 'Teacher profile not found' });
+    }
+
     let query = `
       SELECT 
         a.id,
@@ -1525,39 +1552,40 @@ app.get('/api/teachers/attendance-reports', authenticateToken, requireRole('teac
         a.notes,
         s.name as student_name,
         s.roll_number,
-        c.name as class_name
+        c.name as class_name,
+        c.id as class_id
       FROM attendance a
       JOIN students s ON a.student_id = s.id
       JOIN classes c ON a.class_id = c.id
-      JOIN teacher_stage_assignments tsa ON c.id = tsa.class_id
-      WHERE tsa.teacher_id = ?
+      WHERE c.teacher_id = ?
     `;
     
-    const params = [teacherId];
+    const params = [teacher.id];
     
-    if (classId && classId !== 'all') {
+    if (class_id) {
       query += ` AND a.class_id = ?`;
-      params.push(classId);
+      params.push(class_id);
     }
     
-    if (date) {
-      query += ` AND a.date = ?`;
-      params.push(date);
+    if (date_from) {
+      query += ` AND a.date >= ?`;
+      params.push(date_from);
     }
     
-    query += ` ORDER BY a.date DESC, s.name`;
+    if (date_to) {
+      query += ` AND a.date <= ?`;
+      params.push(date_to);
+    }
+    
+    query += ` ORDER BY a.date DESC, s.name ASC`;
     
     const reports = db.prepare(query).all(...params);
     
     res.json(reports);
   } catch (error) {
-    console.error('Error fetching teacher attendance reports:', error);
+    console.error('Error fetching attendance reports:', error);
     res.status(500).json({ error: error.message });
   }
-});
-
-app.get('/api/teachers/weekly-attendance', authenticateToken, requireRole('teacher'), (req, res) => {
-// ...existing code...
 });
 
 // Catch-all handler: send back index.html for any non-API routes
